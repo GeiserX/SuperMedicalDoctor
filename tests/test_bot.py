@@ -626,3 +626,59 @@ def test_instructions_over_the_cap_are_refused(make_bot, data_repo):
     say(bot, "x", user=PABLO, mention=True)
     assert bot.tg.texts()[-1].startswith("No he podido aplicar ese cambio")
     assert data_repo.remote_log() == before
+
+
+def test_a_reordering_of_the_instructions_is_applied(make_bot, data_repo):
+    bot = make_bot(settings=settings_with_ten())
+    lines = TEN.split("\n")
+    reordered = "\n".join([lines[-1], *lines[:-1]])
+    plugin(bot).REPLIES[:] = [
+        "Vale.\n\n```settings\n"
+        + json.dumps({"assistant": {"instructions": reordered}}, ensure_ascii=False)
+        + "\n```"
+    ]
+    say(bot, "pon la regla 10 primero", user=PABLO, mention=True)
+    assert instructions_on(data_repo) == reordered
+    assert bot.tg.texts()[-1] == "Ajustado: mis instrucciones."
+
+
+def test_a_reminder_change_beside_an_asked_instruction_change_lists_only_what_was_done(
+    make_bot, data_repo
+):
+    bot = make_bot(settings=settings_with_ten())
+    block = {"reminders": {"day_before_at": "21:00"}, "assistant": {"instructions": "Solo esto."}}
+    plugin(bot).REPLIES[:] = [
+        "Vale.\n\n```settings\n" + json.dumps(block, ensure_ascii=False) + "\n```"
+    ]
+    say(bot, "x", user=PABLO, mention=True)
+    texts = bot.tg.texts()
+    assert "Ajustado: el aviso de la víspera, a las 21:00." in texts
+    assert instructions_on(data_repo) == TEN
+    assert any(t.startswith('<a href="tg://user?id=222">Pablo</a>, esto quita') for t in texts)
+
+
+def test_si_refuses_when_the_instructions_move_between_the_check_and_the_write(make_bot, data_repo):
+    """The base is compared inside the write, on the text it rewrites, so a hand edit that the
+    write's own pull brings in is never overwritten."""
+    bot = make_bot(settings=settings_with_ten())
+    plugin(bot).REPLIES[:] = [
+        'Vale.\n\n```settings\n{"assistant": {"instructions": "Solo esto."}}\n```'
+    ]
+    say(bot, "x", user=PABLO, mention=True)
+    ask = last_sent(bot)
+    moved = settings_with_ten().replace("Regla 3 de la casa.", "Regla 3, revisada.")
+    (data_repo.human / "settings.yaml").write_text(moved, encoding="utf-8")
+    git(data_repo.human, "commit", "--quiet", "-am", "a hand edit")
+    git(data_repo.human, "push", "--quiet")
+    bot.repo._tried_at = 0.0  # a pull counts as fresh: only the write's own pull sees the edit
+    bot.repo.clock = lambda: 1.0
+    original = bot.repo.write_settings
+
+    def stale_then_write(fn, message):
+        bot.repo._tried_at = None  # the write pulls, as it does in production
+        return original(fn, message)
+
+    bot.repo.write_settings = stale_then_write
+    tap(bot, buttons(ask)[0][1], user=PABLO)
+    assert bot.tg.texts()[-1].startswith("Mis instrucciones han cambiado desde que lo pregunté")
+    assert "Regla 3, revisada." in instructions_on(data_repo)

@@ -2836,11 +2836,12 @@ class Bot:
         diff = ([], [])
         if new is not None:
             diff = records.instruction_diff(current, new)
-            if not any(diff):
-                values.pop(records.INSTRUCTIONS)  # the same lines: nothing to change
+            if new == current:
+                values.pop(records.INSTRUCTIONS)  # nothing to change
             elif diff[1]:
                 values.pop(records.INSTRUCTIONS)
                 self.ask_instructions(chat, current, new, diff, users, thread)
+                diff = ([], [])  # asked, not done: the confirmation below must not list it
         if not values:
             return True
         if not self.write_settings(chat, values, thread):
@@ -2849,12 +2850,22 @@ class Bot:
         self.post(chat, done + self.diff_text(*diff), thread=thread)
         return True
 
-    def write_settings(self, chat: int, values: dict, thread=None) -> bool:
+    def write_settings(
+        self, chat: int, values: dict, thread=None, expect_instructions: str | None = None
+    ) -> bool:
         """Rewrite `settings.yaml` by line with `values`, checked, committed and pushed; the new
-        settings are used at once. False, after saying so, when it could not be written."""
+        settings are used at once. With `expect_instructions`, the write happens only if the
+        instructions in the file it rewrites are still that text. False, after saying so, when
+        it could not be written."""
         result: list[Settings] = []
+        moved: list[bool] = []
 
         def rewrite(old: str) -> str:
+            if expect_instructions is not None:
+                block = (yaml.safe_load(old) or {}).get("assistant") or {}
+                if str(block.get("instructions") or "") != expect_instructions:
+                    moved.append(True)
+                    raise ValueError("instructions_moved")
             new = records.set_lines(old, values)
             loaded = yaml.safe_load(new)
             s = Settings.from_dict(loaded)
@@ -2870,6 +2881,10 @@ class Bot:
         try:
             self.repo.write_settings(rewrite, message)
         except (ValueError, yaml.YAMLError, GitError, OSError, AttributeError) as e:
+            if moved:
+                log.info("instructions change refused: moved")
+                self.post(chat, self.t("instr_moved"), thread=thread)
+                return False
             log.warning("settings failed: %s", safe(e))
             self.post(chat, self.t("settings_failed"), thread=thread)
             return False
@@ -2960,15 +2975,8 @@ class Bot:
             self.post(chat, self.t("instr_kept"), thread=thread)
             log.info("instructions change declined")
             return
-        self.repo.pull()
-        self.reload_if_pulled()
-        current = str((self.settings.assistant or {}).get("instructions") or "")
-        if current != offer["base"]:
-            self.post(chat, self.t("instr_moved"), thread=thread)
-            log.info("instructions change refused: moved")
-            return
         values = {records.INSTRUCTIONS: offer["new"]}
-        if self.write_settings(chat, values, thread):
+        if self.write_settings(chat, values, thread, expect_instructions=offer["base"]):
             diff = records.instruction_diff(offer["base"], offer["new"])
             done = self.t("settings_done", what=self.settings_what(values, diff))
             self.post(chat, done + self.diff_text(*diff), thread=thread)
