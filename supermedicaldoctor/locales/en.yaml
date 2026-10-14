@@ -20,6 +20,7 @@ invalid_block: "I could not note that properly, so I saved nothing. Can you tell
 record_failed: "Something failed while saving it, so I saved nothing. Can you tell me again in a while?"
 line_appt_add: "• Appointment: {appt}"
 line_appt_change: "• Appointment changed: {appt}"
+line_appt_prep: "• Preparation noted: {what} on {date}"
 line_appt_cancel: "• Appointment cancelled: {appt}"
 line_appt_done: "• Appointment done: {appt}"
 line_med_add: "• Starts: {what} ({kind})"

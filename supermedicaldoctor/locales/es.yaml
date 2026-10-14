@@ -20,6 +20,7 @@ invalid_block: "No he sabido anotarlo bien, así que no he guardado nada. ¿Me l
 record_failed: "Algo ha fallado al guardarlo, así que no he guardado nada. ¿Me lo repites en un rato?"
 line_appt_add: "• Cita: {appt}"
 line_appt_change: "• Cita cambiada: {appt}"
+line_appt_prep: "• Preparación anotada: {what} del {date}"
 line_appt_cancel: "• Cita cancelada: {appt}"
 line_appt_done: "• Cita hecha: {appt}"
 line_med_add: "• Empieza: {what} ({kind})"
