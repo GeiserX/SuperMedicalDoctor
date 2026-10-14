@@ -38,8 +38,8 @@ the scope, or for anyone but the asker in a private chat, is refused.
 One Python file in the data directory (`assistant.plugin`), loaded again when it changes.
 
 ```python
-def converse(turn: dict, settings: dict) -> dict | str: ...     # required
-def forget(conversation: str, settings: dict) -> None: ...       # optional, /nuevo
+def converse(turn: dict, settings: dict) -> dict | str: ...  # required
+def forget(conversation: str, settings: dict) -> None: ...  # optional, /nuevo
 def transcribe(audio: bytes, mime: str, language: str, settings: dict) -> str: ...  # optional
 def answer(request: dict, decision: dict, settings: dict) -> dict: ...  # optional, approvals
 ```
