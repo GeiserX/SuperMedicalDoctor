@@ -1,0 +1,37 @@
+[project]
+name = "supermedicaldoctor"
+dynamic = ["version"]
+description = "A household doctor assistant that lives in a Telegram group: appointments with reminders, medicines and supplements, lab results with trends, and answers from medical sources with the evidence behind them"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    "pyyaml==6.0.3",
+]
+
+[project.scripts]
+smd = "supermedicaldoctor.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "supermedicaldoctor/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["supermedicaldoctor"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.17.0",
+]
