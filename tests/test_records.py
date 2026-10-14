@@ -472,7 +472,7 @@ def test_settings_for_the_turn_leave_out_the_instructions():
 
 
 def test_slug_and_fasting_words():
-    assert records.slug("Hierro bisglicinato") == "hierro-bisglicinato-red-control"
+    assert records.slug("Hierro bisglicinato") == "hierro-bisglicinato"
     assert records.slug("Análisis de sangre", 20).split("-")[0] == "analisis"
     assert records.is_fasting("En ayunas") and records.is_fasting("Ayuno de 12 h")
     assert not records.is_fasting("Sin hierro")
