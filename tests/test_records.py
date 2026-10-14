@@ -277,6 +277,13 @@ def test_a_private_chat_records_only_the_askers_own_data(data):
         apply(data, {"person": "pablo"}, scope=("lucia",), private=True)
 
 
+def test_a_hand_edited_file_with_a_bare_item_refuses_the_block_with_a_code(data):
+    (data / "people/lucia/appointments.yaml").write_text("- just a string\n", encoding="utf-8")
+    block = {"person": "lucia", "appointments": [{"op": "add", "date": "2027-03-21", "what": "X"}]}
+    with pytest.raises(BlockError, match="bad_file"):
+        apply(data, block)
+
+
 def test_a_block_is_all_or_nothing(data):
     block = {
         "person": "lucia",

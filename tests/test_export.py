@@ -77,6 +77,16 @@ def test_fasting_windows_reach_fourteen_days_ahead_only(people):
     assert export.chef(people, later, "Europe/Madrid")["lucia"]["fasting"] == []
 
 
+def test_a_fasting_window_across_the_clock_change_is_real_hours(people):
+    """On 2027-03-28 Madrid moves from 02:00 to 03:00: eight hours before 09:30 is 00:30."""
+    a = people["lucia"].appointments[0]
+    a.update(date="2027-03-28", time="09:30", prep=[{"hours_before": 8, "text": "En ayunas"}])
+    now = datetime(2027, 3, 27, 10, 0, tzinfo=ZoneInfo("Europe/Madrid"))
+    fasting = export.chef(people, now, "Europe/Madrid")["lucia"]["fasting"]
+    assert fasting[0]["from"] == "2027-03-28T00:30:00+01:00"
+    assert fasting[0]["until"] == "2027-03-28T09:30:00+02:00"
+
+
 def test_same_ignores_the_generated_time(people):
     text = export.render(people, NOW, "Europe/Madrid")
     assert export.same(text, people, NOW.replace(hour=11), "Europe/Madrid")

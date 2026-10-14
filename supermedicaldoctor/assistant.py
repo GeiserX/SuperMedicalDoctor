@@ -338,7 +338,7 @@ def forget(data: str | Path, rel: str | None, conversation: str, plugin_settings
     """Tell the plugin to drop a conversation, when it defines `forget`."""
     fn = function(data, rel, "forget", required=False)
     if fn is not None:
-        fn(conversation, plugin_settings)
+        _call(data, rel, fn, (conversation,), plugin_settings)
 
 
 # --- the turn ------------------------------------------------------------------------------

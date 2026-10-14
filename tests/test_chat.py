@@ -126,6 +126,18 @@ def test_a_voice_note_from_pablo_in_his_private_chat_is_heard(make_bot):
     assert contents(plugin(bot).CALLS[0]) == ["Pablo: [voice note] ¿cuándo es mi cita?"]
 
 
+def test_a_forget_that_exits_does_not_stop_nuevo(make_bot):
+    bot = make_bot()
+    say(bot, "hola", mention=True)
+
+    def exits(conversation, settings):
+        raise SystemExit(1)
+
+    plugin(bot).forget = exits
+    say(bot, "/nuevo", user=PABLO)
+    assert last_sent(bot)["text"] == "Empiezo una conversación nueva. Lo anotado sigue igual."
+
+
 # --- later ---------------------------------------------------------------------------------
 
 

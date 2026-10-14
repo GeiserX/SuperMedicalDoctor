@@ -1872,7 +1872,7 @@ class Bot:
             prep_text = html.escape(lower_first(str((d.prep or {}).get("text") or "")))
             if d.early:
                 begins = records.appt_start(a, self.settings.timezone)
-                frm = begins - timedelta(hours=int(d.prep["hours_before"]))
+                frm = records.before(begins, int(d.prep["hours_before"]))
                 text = t(
                     "remind_prep_from",
                     m=m,

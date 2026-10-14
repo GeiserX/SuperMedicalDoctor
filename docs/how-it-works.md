@@ -17,8 +17,9 @@ never knows which provider answers.
 - With `history_scope: all`, the group's other messages are kept in the chat log and go to the next
   turn as context marked `[not to you]`. They are never answered.
 - In a private chat everything reaches it.
-- The bot must be an administrator of the group: Telegram only delivers plain text and every voice
-  note to a bot that reads all messages.
+- The bot must read every group message: make it an administrator of the group, or turn its
+  privacy mode off in BotFather (then remove it from the group and add it again). Without one of
+  the two, Telegram delivers it neither plain text nor every voice note.
 
 ## A turn
 

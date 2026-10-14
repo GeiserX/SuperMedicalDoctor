@@ -17,7 +17,7 @@ import re
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from datetime import time as clock_time
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -660,6 +660,12 @@ def appt_start(a: Mapping, tz: str) -> datetime | None:
     return datetime.combine(d, t, tzinfo=ZoneInfo(tz))
 
 
+def before(start: datetime, hours: int) -> datetime:
+    """`hours` real hours before `start`, in `start`'s zone. Subtracting from an aware datetime
+    counts wall-clock hours, which is an hour off across a daylight-saving change."""
+    return (start.astimezone(UTC) - timedelta(hours=hours)).astimezone(start.tzinfo)
+
+
 def dump_yaml(value: object) -> str:
     return yaml.safe_dump(
         value, allow_unicode=True, sort_keys=False, default_flow_style=False, width=4096
@@ -815,6 +821,8 @@ def apply_record(
         if value is not None and (not isinstance(value, list) or len(value) > limit):
             raise BlockError(f"bad_{key}")
     old = people[pid]
+    if any(not isinstance(x, dict) for x in (*old.meds, *old.appointments, *old.labs)):
+        raise BlockError("bad_file")  # a hand edit left an item that is not a mapping
     pd = PersonData(
         pid, _copy(old.profile), _copy(old.meds), _copy(old.appointments), _copy(old.labs)
     )
@@ -866,7 +874,7 @@ def _documents(block, attachments, out: Applied, base: str, read) -> dict[str, s
         if not isinstance(name, str) or name not in attachments:
             raise BlockError("not_an_attachment")
         if name not in titles:
-            stem = Path(name).stem.split("-", 1)[-1] or "documento"
+            stem = Path(name).stem.split("-", 1)[-1] or "doc"
             titles[name] = (_date(lab.get("date")), stem)
     paths: dict[str, str] = {}
     for name, (d, title) in titles.items():

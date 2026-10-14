@@ -24,7 +24,7 @@ SuperMedicalDoctor is a household doctor assistant that lives in a Telegram grou
 
 ## Quick start
 
-Create a bot with BotFather, make it an administrator of the group, and prepare a data directory as described in [the data format](https://github.com/GeiserX/SuperMedicalDoctor/blob/main/docs/data-format.md), owned by uid 1000:
+Create a bot with BotFather, make it an administrator of the group (or turn its privacy mode off), and prepare a data directory as described in [the data format](https://github.com/GeiserX/SuperMedicalDoctor/blob/main/docs/data-format.md), owned by uid 1000:
 
 ```sh
 docker run --rm -v "$PWD/data:/data" drumsergio/supermedicaldoctor:0.1.0 smd check

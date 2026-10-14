@@ -134,11 +134,8 @@ def test_undo_reverts_the_last_record_of_this_chat_and_the_export(make_bot, data
     say(bot, "x", mention=True)
     say(bot, "/deshacer")
     assert bot.tg.texts()[-1].startswith("Deshecho: Cita: martes 16 de marzo a las 9:00, Ecografía")
-    assert (
-        data_repo.remote_log()[0]
-        == f"undo(lucia): revert {data_repo.remote_log()[1] and ''}"[:13]
-        + data_repo.remote_log()[0][13:]
-    )
+    record_sha = git(data_repo.remote, "rev-parse", "main~1").strip()
+    assert data_repo.remote_log()[0] == f"undo(lucia): revert {record_sha[:8]}"
     appts = remote_yaml(data_repo, "people/lucia/appointments.yaml")
     assert [a["id"] for a in appts] == ["2027-03-12-0930-analitica"]
     chef = remote_yaml(data_repo, "export/chef.yaml")

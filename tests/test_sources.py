@@ -114,6 +114,17 @@ def test_a_file_that_is_not_text_is_refused(tmp_path, bad):
     assert s.fetch(GITEA, "health/summary.md").text is None
 
 
+def test_a_path_that_leaves_the_cache_is_never_written(tmp_path):
+    net = Net(Response(b"overwritten"))
+    s = Sources(tmp_path, urlopen=net, env={})
+    victim = tmp_path / "people" / "lucia" / "meds.yaml"
+    victim.parent.mkdir(parents=True)
+    victim.write_text("mine\n")
+    got = s.fetch(GITEA, "../../../people/lucia/meds.yaml")
+    assert got.text is None and got.stale and net.requests == []
+    assert victim.read_text() == "mine\n"
+
+
 def test_status_lists_every_file_with_its_time(tmp_path):
     s = Sources(tmp_path, urlopen=Net(Response(b"ok")), clock=lambda: 50.0, env={})
     s.fetch(GITEA, "health/summary.md")

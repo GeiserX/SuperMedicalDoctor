@@ -72,7 +72,12 @@ class Sources:
         self._env = env if env is not None else os.environ
 
     def _paths(self, src: Mapping, path: str) -> tuple[Path, Path]:
+        """The cache file and its meta file. `settings_errors` already refuses a name or a path
+        that could leave the cache; this refuses it again, so a fetch can never write a
+        tracked file of the data repository."""
         body = self.root / str(src["name"]) / path
+        if not body.resolve().is_relative_to(self.root.resolve()):
+            raise ValueError("source_outside_cache")
         return body, body.with_name(body.name + ".meta")
 
     def cached(self, src: Mapping, path: str) -> tuple[str | None, dict]:
@@ -90,7 +95,11 @@ class Sources:
     def fetch(self, src: Mapping, path: str) -> Fetched:
         """One file: a 200 replaces the cache, a 304 confirms it, anything else keeps it stale."""
         key = f"sources/{src['name']}/{path}"
-        text, info = self.cached(src, path)
+        try:
+            text, info = self.cached(src, path)
+        except ValueError:
+            log.warning("source refused: outside the cache")
+            return Fetched(key, None, None, True)
         headers = {"User-Agent": "SuperMedicalDoctor", "Accept": "application/vnd.github.raw"}
         token = str(self._env.get(str(src.get("token_env") or ""), "") or "").strip()
         if token:

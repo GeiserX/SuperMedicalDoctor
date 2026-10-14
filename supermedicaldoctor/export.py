@@ -21,6 +21,7 @@ from supermedicaldoctor.records import (
     active,
     appt_start,
     as_date,
+    before,
     dump_yaml,
     is_fasting,
 )
@@ -69,7 +70,7 @@ def chef(people: Mapping[str, PersonData], now: datetime, tz: str) -> dict:
                     continue
                 fasting.append(
                     {
-                        "from": (start - timedelta(hours=hours)).isoformat(),
+                        "from": before(start, hours).isoformat(),
                         "until": start.isoformat(),
                         "text": str(prep.get("text")),
                     }

@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from datetime import time as clock_time
 from zoneinfo import ZoneInfo
 
-from supermedicaldoctor.records import PersonData, appt_time, as_date, clock_text
+from supermedicaldoctor.records import PersonData, appt_time, as_date, before, clock_text
 
 FALLBACK = clock_time(22, 0)
 FOLLOWUP_AFTER = timedelta(hours=3)
@@ -96,7 +96,7 @@ def due(
                     hours = prep.get("hours_before") if isinstance(prep, Mapping) else None
                     if isinstance(hours, bool) or not isinstance(hours, int):
                         continue
-                    at = start - timedelta(hours=hours)
+                    at = before(start, hours)
                     early = in_quiet(at.time(), quiet)
                     if early:
                         at = evening_before(at, quiet)

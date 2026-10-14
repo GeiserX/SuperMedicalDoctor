@@ -56,6 +56,22 @@ def test_a_preparation_due_in_the_quiet_hours_goes_at_22_the_evening_before():
     assert "prep-1" not in kinds(at(11, 21, 59))
 
 
+def test_a_preparation_across_the_clock_change_counts_real_hours():
+    """2027-03-28 springs forward at 02:00: 8 h before 09:30 (07:30 UTC) is 23:30 UTC, 00:30 local;
+    counting on the wall clock would say 01:30, only seven real hours before."""
+    a = appt(id="x", date="2027-03-28", time="09:30", prep=[{"hours_before": 8, "text": "Ayuno"}])
+    people = {"lucia": PersonData("lucia", appointments=[a])}
+    none = (time(0, 0), time(0, 0))  # no quiet hours: only the arithmetic is tested
+
+    def prep_due(hour, minute):
+        now = datetime(2027, 3, 28, hour, minute, tzinfo=ZoneInfo(TZ))
+        due = schedule.due(people, now, TZ, day_before_at=time(20, 0), followup=False, quiet=none)
+        return [d for d in due if d.kind == "prep-0"]
+
+    assert prep_due(0, 29) == []
+    assert prep_due(0, 30)[0].at == datetime(2027, 3, 28, 0, 30, tzinfo=ZoneInfo(TZ))
+
+
 def test_nothing_is_due_inside_the_quiet_hours():
     assert kinds(at(12, 1, 30)) == {}
 
