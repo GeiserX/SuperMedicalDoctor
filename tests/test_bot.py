@@ -87,6 +87,31 @@ def test_a_block_that_does_not_parse_saves_nothing(make_bot, data_repo):
     assert data_repo.remote_log() == before
 
 
+def test_a_change_of_preparation_only_does_not_read_as_a_moved_appointment(make_bot):
+    bot = make_bot()
+    prep = [{"hours_before": 12, "text": "Sin café"}]
+    moved = {"op": "change", "id": "2027-03-12-0930-analitica", "time": "10:00"}
+    plugin(bot).REPLIES[:] = [
+        record(
+            "Vale.",
+            {
+                "person": "lucia",
+                "appointments": [{"op": "change", "id": "2027-03-12-0930-analitica", "prep": prep}],
+            },
+        ),
+        record("Vale.", {"person": "lucia", "appointments": [moved]}),
+    ]
+    say(bot, "sin café antes de la analítica", mention=True)
+    assert bot.tg.texts()[-1] == (
+        "Anotado para Lucía:\n• Preparación anotada: Analítica de control del viernes 12 de marzo"
+        "\n   • Sin café (12 h antes)"
+    )
+    say(bot, "la analítica pasa a las 10", mention=True)
+    assert bot.tg.texts()[-1].startswith(
+        "Anotado para Lucía:\n• Cita cambiada: viernes 12 de marzo a las 10:00, Analítica de control"
+    )
+
+
 def test_two_people_two_blocks_two_commits(make_bot, data_repo):
     bot = make_bot()
     pablo = {"person": "pablo", "meds": [{"op": "stop", "id": "omega-3"}]}
