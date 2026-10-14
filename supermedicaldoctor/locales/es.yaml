@@ -1,0 +1,193 @@
+# Spanish strings (keys from en.yaml). Every «?» goes with its «¿» and every «!» with its «¡».
+
+# --- texto libre, notas de voz, fotos y archivos -------------------------------------------
+no_ai: "Ahora mismo no puedo leer mensajes escritos; en cuanto pueda, lo leo."
+ai_down: "Ahora mismo no puedo leer mensajes escritos. Lo que me has escrito sigue aquí y va con tu próximo mensaje."
+voice_echo: "🎤 {text}"
+voice_off: "Ahora mismo no puedo escuchar notas de voz. ¿Me lo escribes?"
+voice_failed: "No he entendido la nota de voz. ¿Me lo escribes?"
+voice_too_long: "Esa nota de voz es muy larga para mí. ¿Me lo resumes por escrito?"
+file_kind: "Solo leo PDF y fotos (JPEG, PNG o HEIC). ¿Me lo mandas en uno de esos formatos?"
+file_too_big: "Ese archivo es demasiado grande para mí (hasta 20 MB). ¿Me mandas una foto de la hoja?"
+file_failed: "No he podido descargar ese archivo. ¿Me lo vuelves a mandar?"
+later_failed: "No he podido terminar lo que estaba haciendo. Pídemelo otra vez más tarde."
+not_for_you: "Esto es solo para las personas de esta casa."
+
+# --- lo anotado ----------------------------------------------------------------------------
+recorded: "Anotado:"
+recorded_for: "Anotado para {name}:"
+invalid_block: "No he sabido anotarlo bien, así que no he guardado nada. ¿Me lo dices de otra forma?"
+record_failed: "Algo ha fallado al guardarlo, así que no he guardado nada. ¿Me lo repites en un rato?"
+line_appt_add: "• Cita: {appt}"
+line_appt_change: "• Cita cambiada: {appt}"
+line_appt_cancel: "• Cita cancelada: {appt}"
+line_appt_done: "• Cita hecha: {appt}"
+line_med_add: "• Empieza: {what} ({kind})"
+line_med_change: "• Cambia: {what} ({kind})"
+line_med_stop: "• Deja: {what} ({kind}), desde el {date}"
+kind_medicine: "medicamento"
+kind_supplement: "suplemento"
+line_labs: "• Análisis del {date}: {values}"
+labs_more: " y {n} más"
+line_doc: "• Documento guardado: {title} ({date})"
+line_profile_add: "• {what}: {value}"
+line_profile_remove: "• Quitado ({what}): {value}"
+profile_allergies: "Alergias"
+profile_intolerances: "Intolerancias"
+profile_conditions: "Diagnósticos"
+profile_diet: "Dieta"
+profile_doctors: "Médicos"
+profile_notes: "Notas"
+appt_line: "{when}, {what}"
+appt_place: " ({place})"
+at_time: "{date} a las {time}"
+prep_line: "• {text} ({hours} h antes)"
+appt_offer: "{m}, ¿la pongo en tu calendario? Si no respondes, no hago nada."
+appt_calendar: "En el calendario"
+event_title: "Cita: {what}"
+appt_calendar_turn: "[pedido con el botón «En el calendario» de una cita] Pon en mi calendario un evento «{title}» el {when} ({iso}), en {place}, con la preparación en la descripción ({prep}) y un aviso 24 h antes."
+
+# --- recordatorios que el bot manda solo ---------------------------------------------------
+remind_day_before: "⏰ {m}: mañana a las {time}, {what}."
+remind_day_before_untimed: "⏰ {m}: mañana, {what}."
+remind_place: " en {place}"
+remind_prep: "⏰ {m}: desde ahora, {text}: {what}, {day} a las {time}."
+remind_prep_from: "⏰ {m}: a partir de las {start}, {text}: {what}, {day} a las {time}."
+today: "hoy"
+tomorrow: "mañana"
+on_date: "el {date}"
+followup: "{m}, ¿qué tal la cita de {what}? Si te dieron un informe o cambios, cuéntamelo o mándame el PDF.\n\nSi no respondes, no hago nada."
+followup_yes: "Sí, te cuento"
+followup_no_log: "Cita marcada como hecha, sin más novedades."
+tell_me: "{m}, cuéntame. Te leo."
+
+# --- comandos ------------------------------------------------------------------------------
+appts_title: "Citas pendientes de {name}:"
+appts_none: "{name}, no tienes citas pendientes."
+medicine_title: "Medicación de {name}:"
+medicine_none: "{name}, ahora mismo no tomas ningún medicamento."
+supplement_title: "Suplementos de {name}:"
+supplement_none: "{name}, ahora mismo no tomas ningún suplemento."
+data_unreadable: "Ahora mismo no puedo leer los datos. Inténtalo en un rato."
+undo_done: "Deshecho: {what}."
+undo_none: "No hay nada que deshacer."
+undo_failed: "No he podido deshacerlo: algo cambió después. No he tocado nada."
+new_conversation: "Empiezo una conversación nueva. Lo anotado sigue igual."
+status_data: "Datos: commit {head}, {pulled}; {git}."
+status_pull_ok: "actualizados hace {ago}"
+status_pull_failed: "no se pudieron actualizar (uso la última copia)"
+status_pull_never: "sin actualizar desde el arranque"
+status_git_ok: "sincronizado"
+status_git_unpushed: "{n} commit(s) sin subir"
+status_git_down: "remoto inaccesible al arrancar"
+status_git_unknown: "desconocido, no hay rama remota con la que comparar"
+status_ai: "Asistente: {ai}."
+status_ai_ok: "última respuesta hace {ago}"
+status_ai_never: "sin respuesta desde el arranque"
+status_ai_none: "sin asistente"
+status_sources: "Fuentes:"
+status_source_never: "sin descargar todavía"
+menu:
+  citas: "Tus citas pendientes"
+  medicacion: "Tu medicación"
+  suplementos: "Tus suplementos"
+  recordatorios: "Los recordatorios pendientes, para cancelarlos"
+  deshacer: "Deshacer lo último que anoté"
+  ayuda: "Lo que entiendo"
+help: |-
+  Esto es lo que entiendo:
+  /citas: tus citas pendientes
+  /medicacion: tu medicación, por momento del día
+  /suplementos: tus suplementos, por momento del día
+  /recordatorios: los recordatorios pendientes, para cancelarlos
+  /deshacer: deshacer lo último que anoté desde este chat
+  /ayuda: esta lista
+  Para hablar conmigo, mencióname o responde a uno de mis mensajes. Las notas de voz, las fotos y los PDF siempre me llegan.
+help_admin: |-
+  Para administradores:
+  /estado: cómo va el bot y sus datos
+  /nuevo: empezar una conversación nueva con el asistente
+  /presentacion: publicar la presentación
+intro: "Hola, soy el asistente médico de la casa. Llevo vuestras citas, vuestra medicación y vuestros suplementos, leo los análisis que me mandéis y busco lo que me preguntéis en fuentes médicas, diciendo de dónde sale y cuánta evidencia hay. Os recuerdo las citas y lo que haya que preparar. Lo de cada uno es suyo: en el grupo solo hablo de lo que cada uno saque aquí."
+
+# --- botones bajo una respuesta, y acciones que el asistente quiere hacer -----------------
+button_yes: "Sí"
+button_no: "No"
+button_approve: "Aprobar"
+button_reject: "Rechazar"
+options_hint: "O cuéntame otra cosa. Si no respondes, no hago nada."
+yes_no_hint: "Toca Sí o No. Si quieres otra cosa, responde a este mensaje. Si no respondes, no hago nada."
+tap_gone: "Esto ya no está esperando respuesta."
+tap_not_yours: "Esto solo lo puede responder {name}."
+ask_confirm: "{name}, ¿lo apruebas?\n{summary}"
+ask_done: "Hecho."
+ask_failed: "Falló: {error}"
+ask_failed_unknown: "No ha salido bien."
+ask_edited: "Has editado tu mensaje, así que no he hecho este cambio. No he cambiado nada."
+ask_preapproved: "Aprobado con el botón «En el calendario»: {what}\n{result}"
+
+# --- recordatorios ofrecidos con botones; /recordatorios -----------------------------------
+remind_offer: "{name}, ¿quieres que te lo recuerde?\n{lines}\n\nSi no respondes, no hago nada."
+remind_here: "Recordatorio aquí"
+remind_calendar: "En el calendario"
+remind_nothing: "No"
+remind_timeout: "Sin respuesta: nada"
+remind_set: "Te lo recuerdo aquí el {when}."
+remind_set_log: "⏰ Recordatorio puesto para el {when}: {text}"
+remind_calendar_turn: "[pedido con el botón «En el calendario» de un recordatorio] Añade a mi calendario un evento para este recordatorio, una sola vez, el {when} ({iso}): «{text}»."
+reminder_late: "(con retraso: era para el {when})"
+reminders_none: "No hay recordatorios pendientes en este chat."
+reminders_title: "⏰ Recordatorios pendientes:"
+reminders_cancel: "Cancelar {n}"
+reminders_cancelled: "Cancelado {n}"
+reminder_cancelled: "Cancelado."
+reminder_cancelled_log: "⏰ Recordatorio cancelado: {when}: {text}"
+
+# --- ajustes desde el chat -----------------------------------------------------------------
+invalid_settings: "No he podido aplicar ese cambio, así que lo dejo todo como estaba. El aviso de la víspera lleva una hora como 20:30."
+settings_failed: "Algo ha fallado al guardar el ajuste, así que lo dejo como estaba."
+settings_done: "Ajustado: {what}."
+settings_day_before_at: "el aviso de la víspera, a las {time}"
+settings_followup_on: "pregunto después de cada cita"
+settings_followup_off: "ya no pregunto después de cada cita"
+settings_instructions: "mis instrucciones"
+
+# --- context.md ----------------------------------------------------------------------------
+ctx_today: "Hoy"
+ctx_next_days: "Próximos días"
+ctx_people: "Personas"
+ctx_age: "{n} años"
+ctx_appointments: "Citas pendientes (próximos {days} días)"
+ctx_done: "Últimas citas hechas (hasta {n} por persona)"
+ctx_outcome: "resultado"
+ctx_none: "Nada."
+ctx_meds: "Medicación y suplementos que toman"
+ctx_kind_medicine: "medicamento"
+ctx_kind_supplement: "suplemento"
+ctx_days: "días"
+ctx_prep: "preparación"
+ctx_labs: "Análisis: último valor de cada prueba"
+ctx_low: "bajo"
+ctx_high: "alto"
+ctx_reminders: "Recordatorios puestos en este chat"
+ctx_sources: "Fuentes"
+ctx_source_ok: "copia de las {time}"
+ctx_source_stale: "(copia de las {time}; no se pudo actualizar)"
+ctx_source_missing: "sin copia (no se pudo descargar)"
+ctx_data: "Datos"
+ctx_head: "commit"
+ctx_pull_ok: "Actualizado antes de este turno."
+ctx_pull_failed: "No se pudo actualizar: es la última copia buena."
+
+# --- etiquetas -----------------------------------------------------------------------------
+slots:
+  waking: "Al despertar"
+  breakfast: "Desayuno"
+  lunch: "Comida"
+  dinner: "Cena"
+  bedtime: "Al acostarse"
+  as_needed: "Cuando haga falta"
+days: [lunes, martes, miércoles, jueves, viernes, sábado, domingo]
+months: [enero, febrero, marzo, abril, mayo, junio, julio, agosto, septiembre, octubre, noviembre, diciembre]
+date_long: "{weekday} {day} de {month}"
+date_short: "{day} de {month}"

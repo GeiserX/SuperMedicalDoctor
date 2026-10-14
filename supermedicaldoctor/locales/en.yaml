@@ -1,0 +1,193 @@
+# English strings: the source. Other locales carry the same keys; a missing key falls back here.
+
+# --- free text, voice notes, photos and files ----------------------------------------------
+no_ai: "Right now I cannot read written messages; as soon as I can, I will read it."
+ai_down: "Right now I cannot read written messages. What you wrote stays here and goes with your next message."
+voice_echo: "🎤 {text}"
+voice_off: "Right now I cannot listen to voice notes. Can you write it to me?"
+voice_failed: "I could not make out the voice note. Can you write it to me?"
+voice_too_long: "That voice note is too long for me. Can you sum it up in writing?"
+file_kind: "I only read PDFs and photos (JPEG, PNG or HEIC). Can you send it in one of those?"
+file_too_big: "That file is too big for me (up to 20 MB). Can you send me a photo of the page?"
+file_failed: "I could not download that file. Can you send it again?"
+later_failed: "I could not finish what I was doing. Ask me again later."
+not_for_you: "This is only for the people of this household."
+
+# --- what was recorded ---------------------------------------------------------------------
+recorded: "Noted:"
+recorded_for: "Noted for {name}:"
+invalid_block: "I could not note that properly, so I saved nothing. Can you tell me another way?"
+record_failed: "Something failed while saving it, so I saved nothing. Can you tell me again in a while?"
+line_appt_add: "• Appointment: {appt}"
+line_appt_change: "• Appointment changed: {appt}"
+line_appt_cancel: "• Appointment cancelled: {appt}"
+line_appt_done: "• Appointment done: {appt}"
+line_med_add: "• Starts: {what} ({kind})"
+line_med_change: "• Changes: {what} ({kind})"
+line_med_stop: "• Stops: {what} ({kind}), from {date}"
+kind_medicine: "medicine"
+kind_supplement: "supplement"
+line_labs: "• Lab results of {date}: {values}"
+labs_more: " and {n} more"
+line_doc: "• Document filed: {title} ({date})"
+line_profile_add: "• {what}: {value}"
+line_profile_remove: "• Removed ({what}): {value}"
+profile_allergies: "Allergies"
+profile_intolerances: "Intolerances"
+profile_conditions: "Diagnoses"
+profile_diet: "Diet"
+profile_doctors: "Doctors"
+profile_notes: "Notes"
+appt_line: "{when}, {what}"
+appt_place: " ({place})"
+at_time: "{date} at {time}"
+prep_line: "• {text} ({hours} h before)"
+appt_offer: "{m}, shall I put it in your calendar? If you do not answer, I do nothing."
+appt_calendar: "In the calendar"
+event_title: "Appointment: {what}"
+appt_calendar_turn: "[asked with the «In the calendar» button of an appointment] Put in my calendar one event «{title}» on {when} ({iso}), at {place}, with the preparation in the description ({prep}) and a reminder 24 h before."
+
+# --- reminders the bot sends by itself -----------------------------------------------------
+remind_day_before: "⏰ {m}: tomorrow at {time}, {what}."
+remind_day_before_untimed: "⏰ {m}: tomorrow, {what}."
+remind_place: " at {place}"
+remind_prep: "⏰ {m}: from now, {text}: {what}, {day} at {time}."
+remind_prep_from: "⏰ {m}: from {start}, {text}: {what}, {day} at {time}."
+today: "today"
+tomorrow: "tomorrow"
+on_date: "on {date}"
+followup: "{m}, how did the {what} appointment go? If they gave you a report or changes, tell me or send me the PDF.\n\nIf you do not answer, I do nothing."
+followup_yes: "Yes, I'll tell you"
+followup_no_log: "Appointment marked as done, with nothing new."
+tell_me: "{m}, tell me. I am listening."
+
+# --- commands ------------------------------------------------------------------------------
+appts_title: "Pending appointments of {name}:"
+appts_none: "{name}, you have no pending appointments."
+medicine_title: "Medicines of {name}:"
+medicine_none: "{name}, you take no medicine right now."
+supplement_title: "Supplements of {name}:"
+supplement_none: "{name}, you take no supplement right now."
+data_unreadable: "I cannot read the data right now. Try again in a while."
+undo_done: "Undone: {what}."
+undo_none: "Nothing to undo."
+undo_failed: "I could not undo it: something changed afterwards. I touched nothing."
+new_conversation: "Starting a fresh conversation. What is noted stays."
+status_data: "Data: commit {head}, {pulled}; {git}."
+status_pull_ok: "updated {ago} ago"
+status_pull_failed: "could not be updated (I use the last copy)"
+status_pull_never: "not updated since the start"
+status_git_ok: "synced"
+status_git_unpushed: "{n} commit(s) not pushed"
+status_git_down: "remote unreachable at start"
+status_git_unknown: "unknown, no upstream branch to compare with"
+status_ai: "Assistant: {ai}."
+status_ai_ok: "last answer {ago} ago"
+status_ai_never: "no answer since start"
+status_ai_none: "no assistant configured"
+status_sources: "Sources:"
+status_source_never: "not fetched yet"
+menu:
+  citas: "Your pending appointments"
+  medicacion: "Your medicines"
+  suplementos: "Your supplements"
+  recordatorios: "Pending reminders, to cancel them"
+  deshacer: "Undo the last thing I noted"
+  ayuda: "What I understand"
+help: |-
+  This is what I understand:
+  /citas: your pending appointments
+  /medicacion: your medicines, by time of day
+  /suplementos: your supplements, by time of day
+  /recordatorios: the pending reminders, to cancel them
+  /deshacer: undo the last thing I noted from this chat
+  /ayuda: this list
+  Mention me or reply to one of my messages to talk to me. Voice notes, photos and PDFs always reach me.
+help_admin: |-
+  For admins:
+  /estado: how the bot and its data are doing
+  /nuevo: start a fresh conversation with the assistant
+  /presentacion: post the introduction
+intro: "Hi, I am the household's doctor assistant. I keep your appointments, your medicines and your supplements, I read the lab results you send me and I look up what you ask in medical sources, saying where it comes from and how much evidence there is. I remind you of appointments and of what to prepare for them. What belongs to each of you is theirs: in the group I only talk about what each one raises here."
+
+# --- buttons under an answer, and actions the assistant wants to take ----------------------
+button_yes: "Yes"
+button_no: "No"
+button_approve: "Approve"
+button_reject: "Reject"
+options_hint: "Or tell me something else. If you do not answer, I do nothing."
+yes_no_hint: "Tap Yes or No. If you want something else, reply to this message. If you do not answer, I do nothing."
+tap_gone: "This is no longer waiting for an answer."
+tap_not_yours: "Only {name} can answer this."
+ask_confirm: "{name}, do you approve?\n{summary}"
+ask_done: "Done."
+ask_failed: "Failed: {error}"
+ask_failed_unknown: "It did not work."
+ask_edited: "You edited your message, so I did not make this change. Nothing changed."
+ask_preapproved: "Approved with the «In the calendar» button: {what}\n{result}"
+
+# --- reminders offered with buttons; /recordatorios ----------------------------------------
+remind_offer: "{name}, shall I remind you?\n{lines}\n\nIf you do not answer, I do nothing."
+remind_here: "Reminder here"
+remind_calendar: "In the calendar"
+remind_nothing: "No"
+remind_timeout: "No answer: nothing"
+remind_set: "I will remind you here on {when}."
+remind_set_log: "⏰ Reminder set for {when}: {text}"
+remind_calendar_turn: "[asked with the «In the calendar» button of a reminder] Add one event to my calendar for this reminder, once, on {when} ({iso}): «{text}»."
+reminder_late: "(late: it was for {when})"
+reminders_none: "No pending reminders in this chat."
+reminders_title: "⏰ Pending reminders:"
+reminders_cancel: "Cancel {n}"
+reminders_cancelled: "Cancelled {n}"
+reminder_cancelled: "Cancelled."
+reminder_cancelled_log: "⏰ Reminder cancelled: {when}: {text}"
+
+# --- settings from the chat ----------------------------------------------------------------
+invalid_settings: "I could not apply that change, so I left everything as it was. The evening-before reminder takes a time like 20:30."
+settings_failed: "Something failed while saving the setting, so I left it as it was."
+settings_done: "Changed: {what}."
+settings_day_before_at: "the evening-before reminder, at {time}"
+settings_followup_on: "I ask after each appointment"
+settings_followup_off: "I no longer ask after each appointment"
+settings_instructions: "my standing instructions"
+
+# --- context.md ----------------------------------------------------------------------------
+ctx_today: "Today"
+ctx_next_days: "Next days"
+ctx_people: "People"
+ctx_age: "{n} years old"
+ctx_appointments: "Pending appointments (next {days} days)"
+ctx_done: "Last appointments done (up to {n} per person)"
+ctx_outcome: "outcome"
+ctx_none: "None."
+ctx_meds: "Medicines and supplements taken"
+ctx_kind_medicine: "medicine"
+ctx_kind_supplement: "supplement"
+ctx_days: "days"
+ctx_prep: "preparation"
+ctx_labs: "Lab results: the latest value of each test"
+ctx_low: "low"
+ctx_high: "high"
+ctx_reminders: "Reminders set in this chat"
+ctx_sources: "Sources"
+ctx_source_ok: "copy of {time}"
+ctx_source_stale: "(copy of {time}; it could not be updated)"
+ctx_source_missing: "no copy (it could not be fetched)"
+ctx_data: "Data"
+ctx_head: "commit"
+ctx_pull_ok: "Updated before this turn."
+ctx_pull_failed: "It could not be updated: this is the last good copy."
+
+# --- labels --------------------------------------------------------------------------------
+slots:
+  waking: "On waking"
+  breakfast: "Breakfast"
+  lunch: "Lunch"
+  dinner: "Dinner"
+  bedtime: "At bedtime"
+  as_needed: "When needed"
+days: [Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday]
+months: [January, February, March, April, May, June, July, August, September, October, November, December]
+date_long: "{weekday} {day} {month}"
+date_short: "{day} {month}"
