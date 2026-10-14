@@ -196,21 +196,39 @@ def test_a_file_of_another_kind_or_too_big_is_refused_with_a_line(make_bot):
     assert texts[0].startswith("Solo leo PDF y fotos") and "demasiado grande" in texts[1]
 
 
-def test_files_past_the_turn_budget_wait_for_the_next_turn(make_bot, monkeypatch):
+def test_files_past_the_turn_budget_go_in_a_turn_of_their_own(make_bot, monkeypatch):
     from supermedicaldoctor import bot as botmod
 
     monkeypatch.setattr(botmod, "TURN_FILES_MAX", 10)
     bot = make_bot()
-    bot.debounce_s = 1
-    now = [0.0]
-    bot.clock = lambda: now[0]
-    bot.sleep = lambda s: now.__setitem__(0, now[0] + s)
     bot.tg.files.update({"a": b"12345678", "b": b"12345678"})
-    bot.handle({"message": _doc(file_id="a", name="a.pdf")})
-    bot.handle({"message": _doc(file_id="b", name="b.pdf")})
+    first, second = _doc(file_id="a", name="a.pdf"), _doc(file_id="b", name="b.pdf")
+    bot.kv.update_json(  # both queued before any turn runs, as a burst would leave them
+        f"pending:{GROUP}",
+        lambda cur: [
+            {**bot._base_line(m, bot.settings.people["lucia"]), "file": f, "content": c, "body": ""}
+            for m, f, c in (
+                (
+                    first,
+                    {"file_id": "a", "name": "inbox/1-a.pdf", "mime": "application/pdf", "size": 8},
+                    "Lucía: [archivo: inbox/1-a.pdf]",
+                ),
+                (
+                    second,
+                    {"file_id": "b", "name": "inbox/2-b.pdf", "mime": "application/pdf", "size": 8},
+                    "Lucía: [archivo: inbox/2-b.pdf]",
+                ),
+            )
+        ],
+        [],
+    )
+    bot.worker.submit(GROUP)  # one submit only: the second turn must come from the first
     bot.join_idle()
     calls = plugin(bot).CALLS
-    assert [len(c["turn"]["attachments"]) for c in calls] == [1, 1]
+    assert [[a["name"] for a in c["turn"]["attachments"]] for c in calls] == [
+        ["inbox/1-a.pdf"],
+        ["inbox/2-b.pdf"],
+    ]
 
 
 def test_a_file_that_cannot_be_fetched_says_so_and_the_line_goes_on(make_bot):

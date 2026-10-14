@@ -1428,6 +1428,8 @@ class Bot:
         missed = len(state.pulled) - len(handed)
         if handed or missed:
             log.info("handed over: covered=%d next_turn=%d", len(handed), missed)
+        if any(x.get("id") not in taken for x in self.kv.get_json(key, []) or [] if x.get("file")):
+            self.worker.submit(chat)  # files the budget held back go in a turn of their own
         if reply.later is not None:
             job = reply.later
             thread = state.thread
