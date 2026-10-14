@@ -2,7 +2,7 @@
   <img src="https://raw.githubusercontent.com/GeiserX/SuperMedicalDoctor/main/docs/images/banner.svg" alt="SuperMedicalDoctor" width="100%">
 </p>
 
-<h1 align="center">SuperMedicalDoctor</h1>
+<h1 align="center"><img src="https://raw.githubusercontent.com/GeiserX/SuperMedicalDoctor/main/docs/images/logo.svg" alt="" width="40" height="40"> SuperMedicalDoctor</h1>
 
 <p align="center">
   <a href="https://github.com/GeiserX/SuperMedicalDoctor/releases"><img src="https://img.shields.io/github/v/release/GeiserX/SuperMedicalDoctor?style=flat-square" alt="Release"></a>
