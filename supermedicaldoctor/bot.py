@@ -1623,7 +1623,28 @@ class Bot:
                         )
                     )
             elif kind == "appt_change":
-                out.append(t("line_appt_change", appt=self.appt_text(item["after"])))
+                before, after = item["before"], item["after"]
+                moved = {k for k in after if after.get(k) != before.get(k)}
+                if moved == {"prep"}:  # only the preparation: the appointment itself stays
+                    d = records.as_date(after.get("date"))
+                    out.append(
+                        t(
+                            "line_appt_prep",
+                            what=html.escape(str(after.get("what") or "")),
+                            date=t.date(d) if d else "?",
+                        )
+                    )
+                    for prep in after.get("prep") or []:
+                        out.append(
+                            "   "
+                            + t(
+                                "prep_line",
+                                text=html.escape(str(prep["text"])),
+                                hours=prep["hours_before"],
+                            )
+                        )
+                else:
+                    out.append(t("line_appt_change", appt=self.appt_text(after)))
             elif kind == "appt_cancel":
                 out.append(t("line_appt_cancel", appt=self.appt_text(item)))
             elif kind == "appt_done":
