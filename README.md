@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/GeiserX/SuperMedicalDoctor/main/docs/images/banner.svg" alt="SuperMedicalDoctor" width="100%">
+</p>
+
 <h1 align="center">SuperMedicalDoctor</h1>
 
 <p align="center">
