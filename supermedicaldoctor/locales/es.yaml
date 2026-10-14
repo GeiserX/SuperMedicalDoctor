@@ -152,6 +152,9 @@ settings_day_before_at: "el aviso de la víspera, a las {time}"
 settings_followup_on: "pregunto después de cada cita"
 settings_followup_off: "ya no pregunto después de cada cita"
 settings_instructions: "mis instrucciones"
+instr_ask: "{name}, esto quita o cambia líneas de mis instrucciones. ¿Lo dejo así?\n{lines}\n\nSi no respondes, no hago nada."
+instr_kept: "Vale, dejo mis instrucciones como estaban."
+instr_moved: "Mis instrucciones han cambiado desde que lo pregunté, así que no he tocado nada. Pídemelo otra vez."
 
 # --- context.md ----------------------------------------------------------------------------
 ctx_today: "Hoy"

@@ -100,6 +100,7 @@ APPT_TTL_S = 12 * 3600  # an appointment's calendar offer can be tapped this lon
 FOLLOWUP_TTL_S = 12 * 3600  # and the ask after an appointment
 GRANT_SLACK_S = 60  # a tap approves an addition at its time, give or take this
 UNDO_KEEP = 20  # record commits remembered per chat for /deshacer
+INSTR_TTL_S = 12 * 3600  # a change that drops instruction lines can be approved this long
 OWN_KEEP = 200  # ids of the bot's own messages remembered per chat
 
 _COMMAND = re.compile(r"^/([A-Za-z0-9_]+)(?:@([A-Za-z0-9_]+))?(?:\s+(.*))?$", re.DOTALL)
@@ -503,6 +504,7 @@ class Bot:
             "r": self.tapped_remind,
             "c": self.tapped_appt,
             "f": self.tapped_followup,
+            "i": self.tapped_instr,
             "k": self.tapped_cancel,
         }.get(data.split(":", 1)[0])
         if handler is None:
@@ -1416,7 +1418,7 @@ class Bot:
             self.apply_block(chat, block, scope, asker, private, attachments, today, state.thread)
         if settings_blocks:
             admin = all(x.get("admin") for x in covered)
-            self.apply_settings(chat, settings_blocks[-1], admin, state.thread)
+            self.apply_settings(chat, settings_blocks[-1], admin, state.thread, _users(covered))
         if text:
             self.remember(chat, covered, text)
         taken = {x["id"] for x in covered}
@@ -2052,6 +2054,8 @@ class Bot:
             return self.appt_rows(offer)
         if kind == "followup":
             return self.followup_rows(offer)
+        if kind == "instr":
+            return self.instr_rows(offer)
         return self.remind_rows(offer)
 
     def offer_reminders(
@@ -2804,27 +2808,60 @@ class Bot:
 
     # --- settings ------------------------------------------------------------------------
 
-    def apply_settings(self, chat: int, block: object, admin: bool, thread=None) -> bool:
+    def apply_settings(
+        self, chat: int, block: object, admin: bool, thread=None, users: Sequence[int] = ()
+    ) -> bool:
         """A `settings` block: check it all or nothing, rewrite `settings.yaml` by line, commit
-        it (`settings: <keys>`), push, and use the new settings at once."""
+        it (`settings: <keys>`), push, and use the new settings at once.
+
+        The standing instructions are never lost by accident. `instructions_add` appends lines.
+        A whole new `instructions` text that only adds lines is applied; one that drops or
+        rewrites any existing line is not: the bot shows what would go and what would come and
+        asks the admins who asked for a «Sí», and nothing changes without it."""
         try:
             if block is assistant.BAD_BLOCK:
                 raise BlockError("bad_json")
             values = records.validate_settings(block, admin)
+            current = str((self.settings.assistant or {}).get("instructions") or "")
+            if records.INSTRUCTIONS_ADD in values:
+                lines = values.pop(records.INSTRUCTIONS_ADD)
+                values[records.INSTRUCTIONS] = records.add_instructions(current, lines)
+            new = values.get(records.INSTRUCTIONS)
+            if new is not None and len(new) > records.INSTRUCTIONS_MAX:
+                raise BlockError("bad_instructions")
         except BlockError as e:
             log.warning("settings refused: %s", e.code)
             self.post(chat, self.t("invalid_settings"), thread=thread)
             return False
+        diff = ([], [])
+        if new is not None:
+            diff = records.instruction_diff(current, new)
+            if not any(diff):
+                values.pop(records.INSTRUCTIONS)  # the same lines: nothing to change
+            elif diff[1]:
+                values.pop(records.INSTRUCTIONS)
+                self.ask_instructions(chat, current, new, diff, users, thread)
+        if not values:
+            return True
+        if not self.write_settings(chat, values, thread):
+            return False
+        done = self.t("settings_done", what=self.settings_what(values, diff))
+        self.post(chat, done + self.diff_text(*diff), thread=thread)
+        return True
+
+    def write_settings(self, chat: int, values: dict, thread=None) -> bool:
+        """Rewrite `settings.yaml` by line with `values`, checked, committed and pushed; the new
+        settings are used at once. False, after saying so, when it could not be written."""
         result: list[Settings] = []
 
         def rewrite(old: str) -> str:
             new = records.set_lines(old, values)
-            s = Settings.from_dict(yaml.safe_load(new))
+            loaded = yaml.safe_load(new)
+            s = Settings.from_dict(loaded)
             if settings_errors(s, self.data):
                 raise ValueError("settings_not_editable")
             for (section, key), value in values.items():
-                raw = yaml.safe_load(new).get(section, {}).get(key)
-                if records.clock_text(raw) != value:
+                if records.clock_text(loaded.get(section, {}).get(key)) != value:
                     raise ValueError("settings_not_editable")
             result.append(s)
             return new
@@ -2840,6 +2877,9 @@ class Bot:
             self.settings = result[0]
         self.repo.settings_pulled = False
         log.info("settings applied keys=%d", len(values))
+        return True
+
+    def settings_what(self, values: Mapping, diff: tuple[list[str], list[str]]) -> str:
         what = []
         for (section, key), value in values.items():
             if key == "day_before_at":
@@ -2848,8 +2888,91 @@ class Bot:
                 what.append(self.t("settings_followup_" + ("on" if value else "off")))
             else:
                 what.append(self.t("settings_instructions"))
-        self.post(chat, self.t("settings_done", what="; ".join(what)), thread=thread)
-        return True
+        return "; ".join(what)
+
+    def diff_text(self, added: Sequence[str], removed: Sequence[str]) -> str:
+        """The lines that go and the lines that come, one per line, «−» and «+»."""
+        lines = [f"\n− {html.escape(x)}" for x in removed]
+        lines += [f"\n+ {html.escape(x)}" for x in added]
+        return "".join(lines)
+
+    # --- a change of the standing instructions that drops lines waits for a «Sí» ------------
+
+    def ask_instructions(
+        self, chat: int, base: str, new: str, diff, users: Sequence[int], thread=None
+    ) -> None:
+        """Show the change and ask the admins who asked for it (all admins when none of them
+        did) with «Sí» and «No», for 12 hours. «Sí» writes exactly that text, if the
+        instructions are still what they were when it was asked."""
+        by = [u for u in users if self.is_admin(u)] or self.admin_uids()
+        offer = {
+            "key": secrets.token_hex(4),
+            "kind": "instr",
+            "for": by,
+            "items": [{"done": None}],
+            "base": base,
+            "new": new,
+            "ts": self.now().timestamp(),
+            "ttl": INSTR_TTL_S,
+            "thread": thread,
+        }
+        text = self.t("instr_ask", name=self.names(by), lines=self.diff_text(*diff).lstrip("\n"))
+        sent = self.post(chat, text, _keyboard(self.instr_rows(offer)), thread)
+        if sent is None:
+            return
+        offer["msg"] = sent.get("message_id")
+        self.keep_offer(chat, offer)
+        plain = html.unescape(re.sub(r"<[^>]+>", "", text))
+        self.kv.add_chat(chat, "assistant", None, plain, int(self.now().timestamp()))
+        log.info("instructions change asked removed=%d added=%d", len(diff[1]), len(diff[0]))
+
+    def instr_rows(self, offer: Mapping) -> list:
+        done = offer["items"][0].get("done")
+        if done:
+            label = {"yes": "button_yes", "no": "button_no"}.get(done, OFFER_GONE)
+            return [[("✓ " + self.t(label), "x")]]
+        key = offer["key"]
+        return [[(self.t("button_yes"), f"i:{key}:y"), (self.t("button_no"), f"i:{key}:n")]]
+
+    def tapped_instr(self, cq: Mapping, chat: int, data: str, user: object) -> None:
+        _, key, choice = [*data.split(":"), "", ""][:3]
+        mid = (cq.get("message") or {}).get("message_id")
+        offer = self.find_offer(chat, key)
+        if offer is None:
+            self.answer(cq["id"], self.t("tap_gone"))
+            self.unbutton(chat, mid)
+            return
+        if user not in offer.get("for", []):
+            self.answer(cq["id"], self.t("tap_not_yours", name=self.plain_names(offer["for"])))
+            return
+        if choice not in ("y", "n") or offer["items"][0].get("done"):
+            self.answer(cq["id"], self.t("tap_gone"))
+            return
+        offer["items"][0]["done"] = "yes" if choice == "y" else "no"
+        self.keep_offer(chat, offer)
+        self.answer(cq["id"])
+        self.rekey(chat, offer.get("msg"), self.instr_rows(offer))
+        thread = offer.get("thread")
+        if choice == "n":
+            self.kv.add_chat(
+                chat, "assistant", None, self.t("instr_kept"), int(self.now().timestamp())
+            )
+            self.post(chat, self.t("instr_kept"), thread=thread)
+            log.info("instructions change declined")
+            return
+        self.repo.pull()
+        self.reload_if_pulled()
+        current = str((self.settings.assistant or {}).get("instructions") or "")
+        if current != offer["base"]:
+            self.post(chat, self.t("instr_moved"), thread=thread)
+            log.info("instructions change refused: moved")
+            return
+        values = {records.INSTRUCTIONS: offer["new"]}
+        if self.write_settings(chat, values, thread):
+            diff = records.instruction_diff(offer["base"], offer["new"])
+            done = self.t("settings_done", what=self.settings_what(values, diff))
+            self.post(chat, done + self.diff_text(*diff), thread=thread)
+            log.info("instructions change approved")
 
 
 def hm(value: object) -> str:

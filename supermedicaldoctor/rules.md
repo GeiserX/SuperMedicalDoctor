@@ -79,9 +79,12 @@ after each appointment, end your answer with one settings block; an admin may al
 standing instructions:
 
 ```settings
-{"reminders": {"day_before_at": "20:30", "followup": true}, "assistant": {"instructions": "..."}}
+{"reminders": {"day_before_at": "20:30", "followup": true}, "assistant": {"instructions_add": ["..."]}}
 ```
 - Send only the keys that change; settings.yaml has the current values.
+- To add to your standing instructions («pon en tus reglas…»), send "instructions_add" with only the
+  new lines; the others stay. To change or remove lines, send the whole new text as
+  "instructions"; the bot shows what would go and asks before removing anything.
 
 Choices as buttons
 When you put a question with a few concrete answers, end your answer with one options block, after

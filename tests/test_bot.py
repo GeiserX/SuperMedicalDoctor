@@ -512,3 +512,117 @@ def test_instructions_from_a_non_admin_are_refused(make_bot, data_repo):
     say(bot, "cambia tus instrucciones", mention=True)
     assert bot.tg.texts()[-1].startswith("No he podido aplicar ese cambio")
     assert data_repo.remote_log() == before
+
+
+# --- the standing instructions are never replaced by accident ------------------------------
+
+TEN = "\n".join(f"Regla {n} de la casa." for n in range(1, 11))
+
+
+def settings_with_ten():
+    from conftest import SETTINGS
+
+    block = "  instructions: |-\n" + "".join(f"    {x}\n" for x in TEN.split("\n"))
+    return SETTINGS.replace('  instructions: "Secret household instruction."\n', block)
+
+
+def instructions_on(data_repo):
+    return yaml.safe_load(data_repo.remote_file("settings.yaml"))["assistant"]["instructions"]
+
+
+def test_a_new_rule_is_appended_and_the_others_stay(make_bot, data_repo):
+    bot = make_bot(settings=settings_with_ten())
+    plugin(bot).REPLIES[:] = [
+        'Vale.\n\n```settings\n{"assistant": {"instructions_add": ["Contesta siempre con la fuente."]}}\n```'
+    ]
+    say(bot, "pon en tus reglas que contestes con la fuente", user=PABLO, mention=True)
+    assert instructions_on(data_repo) == TEN + "\nContesta siempre con la fuente."
+    assert bot.tg.texts()[-1] == ("Ajustado: mis instrucciones.\n+ Contesta siempre con la fuente.")
+    text = data_repo.remote_file("settings.yaml")
+    assert "  instructions: |-\n    Regla 1 de la casa.\n" in text  # still readable YAML
+
+
+def test_a_whole_text_that_drops_lines_is_asked_and_nothing_changes_without_si(make_bot, data_repo):
+    """The incident: «pon en tus reglas…» came back as one new line in place of ten."""
+    bot = make_bot(settings=settings_with_ten())
+    plugin(bot).REPLIES[:] = [
+        'Vale.\n\n```settings\n{"assistant": {"instructions": "Contesta siempre con la fuente."}}\n```'
+    ]
+    before = data_repo.remote_log()
+    say(bot, "pon en tus reglas que contestes con la fuente", user=PABLO, mention=True)
+    assert data_repo.remote_log() == before
+    assert instructions_on(data_repo) == TEN
+    ask = last_sent(bot)
+    assert ask["text"].startswith(
+        '<a href="tg://user?id=222">Pablo</a>, esto quita o cambia líneas de mis instrucciones.'
+    )
+    assert "− Regla 1 de la casa." in ask["text"] and "− Regla 10 de la casa." in ask["text"]
+    assert "+ Contesta siempre con la fuente." in ask["text"]
+    assert ask["text"].endswith("Si no respondes, no hago nada.")
+    yes, no = buttons(ask)
+    assert (yes[0], no[0]) == ("Sí", "No")
+    tap(bot, yes[1], user=LUCIA)  # not an admin
+    assert toasts(bot)[-1] == "Esto solo lo puede responder Pablo."
+    tap(bot, no[1], user=PABLO)
+    assert bot.tg.texts()[-1] == "Vale, dejo mis instrucciones como estaban."
+    assert data_repo.remote_log() == before and instructions_on(data_repo) == TEN
+
+
+def test_si_writes_exactly_the_text_that_was_shown(make_bot, data_repo):
+    bot = make_bot(settings=settings_with_ten())
+    new = "\n".join(TEN.split("\n")[:9])  # drop the tenth rule, on purpose
+    plugin(bot).REPLIES[:] = [
+        "Vale.\n\n```settings\n"
+        + json.dumps({"assistant": {"instructions": new}}, ensure_ascii=False)
+        + "\n```"
+    ]
+    say(bot, "quita la regla 10", user=PABLO, mention=True)
+    ask = last_sent(bot)
+    assert "− Regla 10 de la casa." in ask["text"] and "+ " not in ask["text"]
+    tap(bot, buttons(ask)[0][1], user=PABLO)
+    assert instructions_on(data_repo) == new
+    assert data_repo.remote_log()[0] == "settings: assistant.instructions"
+    assert bot.tg.texts()[-1] == "Ajustado: mis instrucciones.\n− Regla 10 de la casa."
+
+
+def test_si_after_the_instructions_moved_changes_nothing(make_bot, data_repo):
+    bot = make_bot(settings=settings_with_ten())
+    plugin(bot).REPLIES[:] = [
+        'Vale.\n\n```settings\n{"assistant": {"instructions": "Solo esto."}}\n```'
+    ]
+    say(bot, "x", user=PABLO, mention=True)
+    ask = last_sent(bot)
+    moved = settings_with_ten().replace("Regla 3 de la casa.", "Regla 3, revisada.")
+    (data_repo.human / "settings.yaml").write_text(moved, encoding="utf-8")
+    git(data_repo.human, "commit", "--quiet", "-am", "a hand edit")
+    git(data_repo.human, "push", "--quiet")
+    bot.repo._tried_at = None
+    tap(bot, buttons(ask)[0][1], user=PABLO)
+    assert bot.tg.texts()[-1].startswith("Mis instrucciones han cambiado desde que lo pregunté")
+    assert "Regla 3, revisada." in instructions_on(data_repo)
+
+
+def test_a_whole_text_that_only_adds_is_applied_without_asking(make_bot, data_repo):
+    bot = make_bot(settings=settings_with_ten())
+    plugin(bot).REPLIES[:] = [
+        "Vale.\n\n```settings\n"
+        + json.dumps({"assistant": {"instructions": TEN + "\nUna más."}}, ensure_ascii=False)
+        + "\n```"
+    ]
+    say(bot, "añade una más", user=PABLO, mention=True)
+    assert instructions_on(data_repo) == TEN + "\nUna más."
+    assert bot.tg.texts()[-1] == "Ajustado: mis instrucciones.\n+ Una más."
+
+
+def test_instructions_over_the_cap_are_refused(make_bot, data_repo):
+    bot = make_bot(settings=settings_with_ten())
+    long_lines = [("x" * 450) + str(n) for n in range(9)]  # ten rules plus these pass 4,000
+    plugin(bot).REPLIES[:] = [
+        "Vale.\n\n```settings\n"
+        + json.dumps({"assistant": {"instructions_add": long_lines}})
+        + "\n```"
+    ]
+    before = data_repo.remote_log()
+    say(bot, "x", user=PABLO, mention=True)
+    assert bot.tg.texts()[-1].startswith("No he podido aplicar ese cambio")
+    assert data_repo.remote_log() == before
