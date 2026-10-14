@@ -47,7 +47,7 @@ WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", 
 APPOINTMENT_DAYS = 60  # context.md lists the pending appointments this far ahead
 DONE_SHOWN = 3  # and the last done ones
 
-BLOCK_KINDS = ("record", "settings")  # the fenced JSON blocks an answer may end with
+BLOCK_KINDS = ("record", "settings", "edit")  # the fenced JSON blocks an answer may end with
 _BLOCK = {k: re.compile(rf"```{k}[^\S\n]*\n(.*?)```", re.DOTALL) for k in BLOCK_KINDS}
 _UNCLOSED = {k: re.compile(rf"```{k}\b.*\Z", re.DOTALL) for k in BLOCK_KINDS}
 BAD_BLOCK = object()  # `extract` found a block whose JSON does not parse

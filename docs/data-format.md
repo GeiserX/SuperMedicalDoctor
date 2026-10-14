@@ -52,6 +52,7 @@ assistant:
 sources: []                   # files from other repositories, below
 exports:
   - {kind: chef, path: export/chef.yaml}
+editable: []                  # docs the assistant may edit besides docs/HEALTH.md and people/
 ```
 
 - A person id is lowercase letters, digits and `-`. Each `user_id` is a Telegram user id, an
@@ -59,8 +60,11 @@ exports:
 - `calendar` is an opaque string the app hands to the plugin (`turn["calendars"]`) and never reads.
   A person without one gets no calendar offers.
 - Only `reminders.day_before_at`, `reminders.followup` and `assistant.instructions` (admins only, at
-  most 4,000 characters) can be changed from the chat. The bot rewrites that one line, keeps every
-  other byte and commits it as `settings: <keys>`.
+  most 4,000 characters) can be changed with a settings block. The bot rewrites that one line, keeps
+  every other byte and commits it as `settings: <keys>`. New instruction lines are appended; a change
+  that drops or rewrites an existing line waits for an admin's «Sí».
+- `editable` lists text files outside `people/` the assistant may edit with an edit block (below).
+  Never `plugins/`, `deploy/`, `tests/`, `export/`, `state/` or the design docs.
 
 ### `sources`
 
@@ -188,12 +192,30 @@ people:
 Never exported: conditions, lab values, documents, doctors, places, what an appointment is for,
 why a medicine is taken, notes, birth date, anything from `sources`.
 
+## Files the assistant edits
+
+Besides records, the assistant keeps the files current with an ```` ```edit ```` block: a status,
+a note, a new doctor's details. Each edit names a text file and gives its whole new content, one
+exact replacement (`old`, `new`) or `delete: true`.
+
+| path | who |
+|---|---|
+| `people/<id>/**` (not `labs.jsonl`, not `documents/`) | in the group, anyone; in a private chat, only that person; an admin, always |
+| `settings.yaml` | admins; dropping an instruction line waits for «Sí» |
+| `docs/HEALTH.md` and every path in `editable` | in the group, or an admin |
+
+The edits are tried on a copy and must pass `smd check`; then they are committed with the
+regenerated export, the change is shown line by line, and `/deshacer` reverts it. An edit the
+assistant proposes on its own, the deletion of a file and the removal of more than half of one
+wait for «Sí». At most 10 edits and 60,000 characters per answer, 20,000 per edit.
+
 ## The commits
 
 | commit | made by |
 |---|---|
 | `log(<person>): <short list>` | a record from the chat, with the regenerated export |
 | `undo(<person>): revert <commit>` | `/deshacer`, a `git revert` of the last record from that chat |
+| `chat(<person>): edit <paths>` | an edit block, as the person who asked |
 | `settings: <keys>` | a setting changed from the chat; never undone by `/deshacer` |
 | `export: chef` | the export refreshed at start |
 

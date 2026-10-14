@@ -50,6 +50,18 @@ DOC_EXTS = {
 PROFILE_LISTS = ("allergies", "intolerances", "conditions", "diet", "doctors", "notes")
 NOTES_MAX, NOTE_CHARS = 30, 300
 INSTRUCTIONS_MAX = 4000
+EDITABLE_SUFFIXES = (".md", ".txt", ".yaml", ".yml", ".json")
+EDITABLE_NEVER = (
+    "plugins",
+    "deploy",
+    "tests",
+    "export",
+    "state",
+    ".git",
+    ".github",
+    ".beads",
+    PEOPLE_DIR,
+)
 
 _ID = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?")
 _HHMM = re.compile(r"(\d{1,2}):(\d{2})")
@@ -161,6 +173,7 @@ class Settings:
     assistant: Mapping | None = None
     sources: tuple = ()
     exports: tuple = ()
+    editable: tuple = ()  # docs the assistant may edit, beside each person's folder
 
     @classmethod
     def from_dict(cls, raw: object) -> Settings:
@@ -191,6 +204,7 @@ class Settings:
         if exports is None:
             exports = [{"kind": "chef", "path": "export/chef.yaml"}]
         admins = tg.get("admins") or ()
+        editable = raw.get("editable") or ()
         return cls(
             timezone=str(raw.get("timezone") or "UTC"),
             language=str(raw.get("language") or "en"),
@@ -210,6 +224,7 @@ class Settings:
             assistant=dict(block) if isinstance(block, Mapping) else None,
             sources=tuple(sources) if isinstance(sources, list | tuple) else (sources,),
             exports=tuple(exports) if isinstance(exports, list | tuple) else (exports,),
+            editable=tuple(editable) if isinstance(editable, list | tuple) else (editable,),
         )
 
     # convenience, once `settings_errors` said the values are good
@@ -327,6 +342,20 @@ def settings_errors(s: Settings, data: str | Path) -> list[str]:
         ok = isinstance(ex, Mapping) and ex.get("kind") in EXPORT_KINDS
         if not ok or not _inside(root, ex.get("path")):
             errors.append("bad_export")
+    for path in s.editable:
+        if (
+            not _inside(root, path)
+            or not str(path).lower().endswith(EDITABLE_SUFFIXES)
+            or str(path).split("/")[0] in EDITABLE_NEVER
+            or path
+            in (
+                SETTINGS_FILE,
+                ".gitignore",
+                "docs/DESIGN.md",
+                "docs/CONTRACT.md",
+            )
+        ):
+            errors.append("bad_editable")
     return errors
 
 

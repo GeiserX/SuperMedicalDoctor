@@ -440,9 +440,9 @@ class Repo:
 
     # --- writes --------------------------------------------------------------------------
 
-    def commit(self, files: Mapping[str, str | bytes], message: str) -> str | None:
-        """Write `files` (text or bytes, by path in the repo), commit them alone as `message`
-        and push. Pulls first unless a pull is fresh. Returns the commit's id, or None when
+    def commit(self, files: Mapping[str, str | bytes | None], message: str) -> str | None:
+        """Write `files` (text or bytes, by path in the repo; None deletes the file), commit
+        them alone as `message` and push. Pulls first unless a pull is fresh. Returns the commit's id, or None when
         nothing changed. A commit that fails puts every file back as it was and raises
         `GitError`; a push that fails keeps the commit for the tick."""
         with DATA_LOCK:
@@ -450,9 +450,12 @@ class Repo:
             paths = list(files)
             old = {p: self._read(p) for p in paths}
             for p, content in files.items():
-                _write(self.data / p, content)
+                if content is None:
+                    (self.data / p).unlink(missing_ok=True)
+                else:
+                    _write(self.data / p, content)
             try:
-                self._run("add", "--", *paths, code="add_failed")
+                self._run("add", "-A", "--", *paths, code="add_failed")
                 if self._git("diff", "--cached", "--quiet", "--", *paths).returncode == 0:
                     return None
                 self._run("commit", "--quiet", "-m", message, "--", *paths, code="commit_failed")

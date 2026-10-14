@@ -81,8 +81,13 @@ The app takes fenced blocks out of `text`; nobody sees them.
   from what was saved, never from the assistant's prose; a block that changes nothing says nothing,
   so an answer applied twice is harmless. A `doc` or `file` must be an attachment of this turn: the
   app files it in `documents/<date>-<title>.<ext>`.
-- **`settings`**: `reminders.day_before_at`, `reminders.followup`, and `assistant.instructions` for
-  admins.
+- **`settings`**: `reminders.day_before_at`, `reminders.followup`, and `assistant.instructions` or
+  `assistant.instructions_add` for admins. Lines are appended; dropping one waits for «Sí».
+- **`edit`** (JSON): `{"asked": bool, "edits": [{"path", "content" | "old"+"new" | "delete"}]}`,
+  file edits inside the allowed paths ([data format](data-format.md)), checked on a copy, committed
+  with the export as `chat(<person>): edit …`, shown line by line and undone by `/deshacer`. Only
+  an edit the person asked for goes at once; a proposed one, a file deletion or more than half of
+  one waits for «Sí».
 - **`options`**: up to five choices as buttons, for the people the answer covered, for 12 hours. A
   tap is that person's next message. «Sí»/«No» get their own hint line.
 - **`reminders`**: `- YYYY-MM-DD HH:MM | text [| person]`, offered under the answer with
