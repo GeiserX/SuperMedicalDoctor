@@ -18,7 +18,7 @@ The app loads it from the data directory like any plugin. A test reaches the loa
 
 A reply dict may carry `later`, a callable with no arguments that returns a string: the app runs
 it after posting the text. Every turn arrives with `scope`, `asker`, `files`, `sources`,
-`attachments` and `calendars` as the app builds them; `CALLS` keeps a deep copy.
+`attachments`, `calendars` and `chat` as the app builds them; `CALLS` keeps a deep copy.
 """
 
 import copy
