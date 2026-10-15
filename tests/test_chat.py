@@ -190,3 +190,94 @@ def test_the_bot_remembers_the_ids_of_its_own_messages(make_bot):
     bot.handle({"message": msg})
     bot.join_idle()
     assert contents(plugin(bot).CALLS[-1])[-1] == "Pablo: [replying to the bot: Vale.] y otra cosa"
+
+
+# --- replies to the bot, in every shape Telegram sends them --------------------------------
+
+
+def test_a_reply_to_a_bot_answer_with_media_queues_a_turn_with_its_caption(make_bot):
+    bot = make_bot()
+    msg = message("¿y el dermatólogo?", user=PABLO)
+    msg["reply_to_message"] = {
+        "message_id": 18,
+        "from": {"id": 999, "is_bot": True},
+        "document": {"file_id": "d1", "file_name": "especialidades.pdf"},
+        "caption": "Especialidades que cubre el seguro",
+    }
+    bot.handle({"message": msg})
+    bot.join_idle()
+    assert contents(plugin(bot).CALLS[-1])[-1] == (
+        "Pablo: [replying to the bot: Especialidades que cubre el seguro] ¿y el dermatólogo?"
+    )
+
+
+def test_a_reply_from_another_topic_or_chat_reaches_the_bot(make_bot):
+    """Telegram sends a reply to a message of another topic as `external_reply`, with no
+    `reply_to_message`."""
+    bot = make_bot()
+    msg = message("¿y esto?", user=PABLO)
+    msg["external_reply"] = {
+        "origin": {"type": "user", "sender_user": {"id": 999, "is_bot": True}, "date": 1},
+        "chat": {"id": GROUP, "type": "supergroup"},
+        "message_id": 18,
+    }
+    msg["quote"] = {"text": "cubre dermatología", "position": 0}
+    bot.handle({"message": msg})
+    bot.join_idle()
+    assert contents(plugin(bot).CALLS[-1])[-1] == (
+        "Pablo: [replying to the bot: cubre dermatología] ¿y esto?"
+    )
+
+
+def test_a_reply_to_a_remembered_message_without_its_sender_reaches_the_bot(make_bot):
+    bot = make_bot()
+    say(bot, "hola", mention=True)
+    mine = bot.kv.get_json(f"own:{GROUP}")[-1]
+    msg = message("vale", user=PABLO)
+    msg["external_reply"] = {"origin": {"type": "hidden_user"}, "message_id": mine}
+    bot.handle({"message": msg})
+    bot.join_idle()
+    assert contents(plugin(bot).CALLS[-1])[-1] == "Pablo: [replying to the bot: ] vale"
+
+
+def test_every_message_the_bot_sends_is_remembered(make_bot):
+    """Answers (split or not), «Anotado» lines, offers and asks: a reply to any of them is
+    for the bot."""
+    from helpers import record
+
+    bot = make_bot()
+    block = {
+        "person": "lucia",
+        "appointments": [{"op": "add", "date": "2027-03-16", "time": "9:00", "what": "Eco"}],
+    }
+
+    def asks(turn):
+        turn["ask"]({"id": "q", "summary": "Algo", "confirm_by": "admins"})
+        return record("x" * 5000 + "\n\n" + "y" * 10, block) + (
+            "\n\n```reminders\n- 2027-03-11 08:00 | Hierro\n```"
+        )
+
+    plugin(bot).REPLIES[:] = [asks]
+    say(bot, "hola", mention=True)
+    sent_ids = list(range(1001, 1001 + len(sent(bot))))
+    assert len(sent_ids) >= 5  # two parts, the ask, «Anotado» with its offer, the reminder offer
+    assert bot.kv.get_json(f"own:{GROUP}") == sent_ids
+
+
+def test_a_group_text_not_for_the_bot_says_why_in_the_log(make_bot, caplog):
+    import logging
+
+    caplog.set_level(logging.INFO)
+    bot = make_bot()
+    other = message("¿vienes?", user=PABLO)
+    other["reply_to_message"] = {"message_id": 3, "from": {"id": LUCIA}, "text": "voy"}
+    bot.handle({"message": other})
+    bot.handle({"message": message("hola a todos", user=PABLO)})
+    anon = message("hola", user=1087968824)
+    anon["sender_chat"] = {"id": GROUP, "type": "supergroup"}
+    bot.handle({"message": anon})
+    bot.join_idle()
+    assert "group text not for the bot: reply to someone else" in caplog.text
+    assert "group text not for the bot: not a reply and no mention" in caplog.text
+    assert "group text from an anonymous admin or a channel: not a person" in caplog.text
+    assert "¿vienes?" not in caplog.text and "hola a todos" not in caplog.text

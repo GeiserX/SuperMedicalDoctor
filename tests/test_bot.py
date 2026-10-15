@@ -352,7 +352,8 @@ def test_an_ask_with_an_owner_waits_for_that_person_only(make_bot):
     mod.REPLIES[:] = [ask_for_pablos_calendar]
     bot.handle({"update_id": 1, "message": message("pon la cita de Pablo", mention=True)})
     deadline = time.monotonic() + 30
-    while not any("¿lo apruebas?" in t for t in bot.tg.texts()) and time.monotonic() < deadline:
+    # the ask is registered only after its send returns, so wait for the key, not only the text
+    while not bot.asks and time.monotonic() < deadline:
         time.sleep(0.02)
     ask = next(p for p in sent(bot) if "¿lo apruebas?" in p["text"])
     assert ask["text"].startswith('<a href="tg://user?id=222">Pablo</a>, ¿lo apruebas?')

@@ -11,7 +11,10 @@ never knows which provider answers.
 - **The group** (`telegram.chat_id`, a supergroup) and **private chats with a person** in
   `settings.people`. Everyone else is ignored; a stranger's tap gets a toast.
 - In the group, a text reaches the assistant when it **mentions the bot** or **replies to one of
-  its messages**. Every **voice note**, **photo** and **file** (PDF, JPEG, PNG, HEIC) from a person
+  its messages**: a reply Telegram marks as the bot's, a reply to any id the bot remembers sending
+  in that chat, or a reply from another topic or chat (`external_reply`) whose origin is the bot.
+  The quoted part goes with it. A group text that does not reach it leaves one log line saying
+  why (a reply to someone else, no reply and no mention, an anonymous admin), never its words. Every **voice note**, **photo** and **file** (PDF, JPEG, PNG, HEIC) from a person
   reaches it too: a voice note cannot carry a mention, and a lab sheet dropped in the doctor's group
   is meant for the doctor. The caption is the message.
 - With `history_scope: all`, the group's other messages are kept in the chat log and go to the next
@@ -81,8 +84,13 @@ The app takes fenced blocks out of `text`; nobody sees them.
   from what was saved, never from the assistant's prose; a block that changes nothing says nothing,
   so an answer applied twice is harmless. A `doc` or `file` must be an attachment of this turn: the
   app files it in `documents/<date>-<title>.<ext>`.
-- **`settings`**: `reminders.day_before_at`, `reminders.followup`, and `assistant.instructions` for
-  admins.
+- **`settings`**: `reminders.day_before_at`, `reminders.followup`, and `assistant.instructions` or
+  `assistant.instructions_add` for admins. Lines are appended; dropping one waits for «Sí».
+- **`edit`** (JSON): `{"asked": bool, "edits": [{"path", "content" | "old"+"new" | "delete"}]}`,
+  file edits inside the allowed paths ([data format](data-format.md)), checked on a copy, committed
+  with the export as `chat(<person>): edit …`, shown line by line and undone by `/deshacer`. Only
+  an edit the person asked for goes at once; a proposed one, a file deletion, more than half of
+  one or any change to `settings.yaml` waits for «Sí» (from an admin, for `settings.yaml`).
 - **`options`**: up to five choices as buttons, for the people the answer covered, for 12 hours. A
   tap is that person's next message. «Sí»/«No» get their own hint line.
 - **`reminders`**: `- YYYY-MM-DD HH:MM | text [| person]`, offered under the answer with

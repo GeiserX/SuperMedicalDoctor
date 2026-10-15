@@ -28,19 +28,20 @@ import html
 import logging
 import re
 import secrets
+import tempfile
 import threading
 import time
 import unicodedata
 from collections import Counter, deque
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import yaml
 
-from supermedicaldoctor import assistant, export, records, schedule
+from supermedicaldoctor import assistant, edits, export, records, schedule
 from supermedicaldoctor.i18n import Translator
 from supermedicaldoctor.records import (
     SETTINGS_FILE,
@@ -75,6 +76,7 @@ TURN_FILES_MAX = 25 * 1024 * 1024  # the photos and files one turn carries at mo
 ECHO_MAX = 4000  # the «🎤» echo of a transcript is cut to this, in UTF-16 code units
 FILE_MIMES = ("application/pdf", "image/jpeg", "image/png", "image/heic", "image/heif")
 ADMIN_STATUSES = frozenset({"administrator", "creator"})
+ANONYMOUS_ADMIN = 1087968824  # Telegram's GroupAnonymousBot: an admin writing as the group
 NOT_MODIFIED = "message is not modified"
 POLL_S = 20  # getUpdates long poll
 WAIT_409_S = 30  # another poller holds the token: wait and keep the offset
@@ -505,6 +507,7 @@ class Bot:
             "c": self.tapped_appt,
             "f": self.tapped_followup,
             "i": self.tapped_instr,
+            "e": self.tapped_edit,
             "k": self.tapped_cancel,
         }.get(data.split(":", 1)[0])
         if handler is None:
@@ -531,6 +534,9 @@ class Bot:
         p = self.person(user)
         private = chat.get("type") == "private"
         if p is None:  # someone else in the group: never answered, maybe kept as context
+            frm = msg.get("from") or {}
+            if frm.get("id") == ANONYMOUS_ADMIN or msg.get("sender_chat"):
+                log.info("group text from an anonymous admin or a channel: not a person")
             self.log_seen(chat["id"], msg, text)
             return
         command = _COMMAND.match(text.strip())
@@ -547,6 +553,7 @@ class Bot:
         if content is not None:
             self.queue_text(chat["id"], msg, content, p, self._strip_mention(msg, text)[0])
         elif not private:
+            log.info("group text not for the bot: %s", self.not_addressed(msg, private))
             self.log_seen(chat["id"], msg, text)
 
     def sender(self, msg: Mapping) -> str:
@@ -579,12 +586,30 @@ class Bot:
         log.info("group line logged")
 
     def to_bot(self, msg: Mapping) -> bool:
+        """Whether the message replies to one of the bot's messages: Telegram says the replied
+        message is the bot's, or its id is one the bot sent in this chat, or (a reply from
+        another topic or chat) its origin is the bot."""
         reply = msg.get("reply_to_message") or {}
         if self.bot_id is not None and (reply.get("from") or {}).get("id") == self.bot_id:
             return True
         chat = (msg.get("chat") or {}).get("id")
+        own = self.kv.get_json(f"own:{chat}", []) or []
         mid = reply.get("message_id")
-        return isinstance(mid, int) and mid in (self.kv.get_json(f"own:{chat}", []) or [])
+        if isinstance(mid, int) and mid in own:
+            return True
+        external = msg.get("external_reply") or {}
+        origin = external.get("origin") or {}
+        if self.bot_id is not None and (origin.get("sender_user") or {}).get("id") == self.bot_id:
+            return True
+        same_chat = (external.get("chat") or {}).get("id") in (None, chat)
+        mid = external.get("message_id")
+        return same_chat and isinstance(mid, int) and mid in own
+
+    def not_addressed(self, msg: Mapping, private: bool) -> str:
+        """Why a group text was not for the bot, as a kind for the service log."""
+        if msg.get("reply_to_message") or msg.get("external_reply"):
+            return "reply to someone else"
+        return "not a reply and no mention"
 
     def addressed(self, msg: Mapping, text: str, private: bool, p: Person) -> str | None:
         """The line for the assistant when the message is meant for the bot, else None: a
@@ -598,10 +623,21 @@ class Bot:
             return None
         prefix = f"{p.name}: "
         if to_bot:
-            reply = msg.get("reply_to_message") or {}
-            quoted = reply.get("text") or reply.get("caption") or ""
-            prefix += f"[replying to the bot: {quoted}] "
+            prefix += f"[replying to the bot: {self.quoted(msg)}] "
         return prefix + body
+
+    @staticmethod
+    def quoted(msg: Mapping) -> str:
+        """What the reply quotes: the part the person selected (`quote`), else the replied
+        message's text or caption, whatever its formatting."""
+        quote = msg.get("quote") or {}
+        if isinstance(quote.get("text"), str) and quote["text"].strip():
+            return quote["text"]
+        for source in (msg.get("reply_to_message") or {}, msg.get("external_reply") or {}):
+            for key in ("text", "caption"):
+                if isinstance(source.get(key), str) and source[key].strip():
+                    return source[key]
+        return ""
 
     def _strip_mention(self, msg: Mapping, text: str, key: str = "entities") -> tuple[str, bool]:
         """Remove each `mention` entity equal to the bot's @username. Entity offsets count
@@ -1403,6 +1439,7 @@ class Bot:
         reply_to = _mid(covered[0]) if len(covered) == 1 else None
         text, blocks = assistant.extract(reply.text)
         text, settings_blocks = assistant.extract(text, "settings")
+        text, edit_blocks = assistant.extract(text, "edit")
         text, offered = assistant.extract_options(text)
         text, listed = assistant.extract_reminders(text)
         offered = reply.options or offered
@@ -1416,9 +1453,13 @@ class Bot:
         attachments = {a.name: a for a in atts}
         for block in blocks:
             self.apply_block(chat, block, scope, asker, private, attachments, today, state.thread)
+        admin = all(x.get("admin") for x in covered)
         if settings_blocks:
-            admin = all(x.get("admin") for x in covered)
             self.apply_settings(chat, settings_blocks[-1], admin, state.thread, _users(covered))
+        if edit_blocks:
+            self.apply_edits(
+                chat, edit_blocks, scope, asker, private, admin, _users(covered), state.thread
+            )
         if text:
             self.remember(chat, covered, text)
         taken = {x["id"] for x in covered}
@@ -1430,8 +1471,12 @@ class Bot:
         missed = len(state.pulled) - len(handed)
         if handed or missed:
             log.info("handed over: covered=%d next_turn=%d", len(handed), missed)
-        if any(x.get("id") not in taken for x in self.kv.get_json(key, []) or [] if x.get("file")):
-            self.worker.submit(chat)  # files the budget held back go in a turn of their own
+        left = [x for x in self.kv.get_json(key, []) or [] if "content" in x]
+        if any(x.get("id") not in taken for x in left):
+            # a line this answer did not take (handed over but not covered, or a file the budget
+            # held back) gets a turn of its own now, not when someone happens to write again
+            self.worker.submit(chat)
+            log.info("pending lines left after a turn: next turn queued")
         if reply.later is not None:
             job = reply.later
             thread = state.thread
@@ -2056,6 +2101,8 @@ class Bot:
             return self.followup_rows(offer)
         if kind == "instr":
             return self.instr_rows(offer)
+        if kind == "edit":
+            return self.edit_rows(offer)
         return self.remind_rows(offer)
 
     def offer_reminders(
@@ -2981,6 +3028,179 @@ class Bot:
             done = self.t("settings_done", what=self.settings_what(values, diff))
             self.post(chat, done + self.diff_text(*diff), thread=thread)
             log.info("instructions change approved")
+
+    # --- file edits: keeping the household's files current ----------------------------------
+
+    def apply_edits(
+        self,
+        chat: int,
+        blocks: Sequence[object],
+        scope: Sequence[str],
+        asker: str | None,
+        private: bool,
+        admin: bool,
+        users: Sequence[int],
+        thread=None,
+    ) -> bool:
+        """The ```edit blocks of an answer, checked all or nothing: every path allowed for
+        this chat and person, the result sound on a copy (`smd check`). An edit the person
+        asked for is committed at once and confirmed with its diff; one the assistant proposes,
+        the deletion of a file, more than half of one, or any change to `settings.yaml` (admins,
+        people, sources: text quoted into a turn must not grant them) waits for a «Sí»."""
+        try:
+            if any(b is assistant.BAD_BLOCK for b in blocks):
+                raise BlockError("bad_json")
+            wanted, asked = edits.parse(blocks)
+            wanted = [replace(e, path=edits.normal(e.path)) for e in wanted]
+            for e in wanted:
+                edits.allowed(
+                    e.path, self.settings, scope=scope, asker=asker, private=private, admin=admin
+                )
+            with DATA_LOCK:  # from the plan to the commit, nothing else writes
+                self.repo.pull()
+                planned = edits.plan(self.data, wanted)
+                if not planned:
+                    return True
+                files = self.edit_files(planned)
+                ask = not asked or any(
+                    p.big or p.path == records.SETTINGS_FILE or edits.instructions_dropped(p)
+                    for p in planned
+                )
+                if files is not None and not ask:
+                    return self.commit_edits(chat, planned, files, asker, thread)
+        except BlockError as e:
+            log.warning("edit refused: %s", e.code)
+            self.post(chat, self.t("edit_refused"), thread=thread)
+            return False
+        if files is None:
+            self.post(chat, self.t("edit_check_failed"), thread=thread)
+            return False
+        self.ask_edits(chat, planned, users, thread)
+        return True
+
+    def edit_files(self, planned: Sequence[edits.Planned]) -> dict | None:
+        """The files one commit of `planned` writes: the edits and, when a person's file
+        changed, the exports regenerated from the edited data. None when the edited copy fails
+        the checks of `smd check`."""
+        with tempfile.TemporaryDirectory(prefix="smd-edit-") as tmp:
+            copy = edits.copy_data(self.data, tmp)
+            errors = edits.check_copy(copy, planned)
+            if errors:
+                log.warning("edit refused: check_failed n=%d", len(errors))
+                return None
+            files: dict = {p.path: p.after for p in planned}
+            if any(p.path.startswith(records.PEOPLE_DIR + "/") for p in planned):
+                after = records.load_people(copy, list(self.settings.people))
+                files.update(self.export_files(after))
+        return files
+
+    def edit_text(self, planned: Sequence[edits.Planned]) -> str:
+        lines = []
+        for p in planned:
+            key = "edit_deleted" if p.after is None else "edit_file"
+            lines.append(self.t(key, path=html.escape(p.path)))
+            lines += [html.escape(x) for x in edits.diff(p)]
+        return "\n".join(lines)
+
+    def commit_edits(self, chat: int, planned, files: dict, asker: str | None, thread=None) -> bool:
+        who = asker or "group"
+        message = f"chat({who}): edit {edits.paths_text(planned)}"[:200]
+        try:
+            sha = self.repo.commit(files, message)
+        except (GitError, OSError) as e:
+            log.warning("edit failed: %s", safe(e))
+            self.post(chat, self.t("record_failed"), thread=thread)
+            return False
+        if any(p.path == records.SETTINGS_FILE for p in planned):
+            self.repo.settings_pulled = True
+            self.reload_if_pulled()
+        text = self.t("edited") + "\n" + self.edit_text(planned)
+        self.post(chat, text, thread=thread)
+        plain = html.unescape(re.sub(r"<[^>]+>", "", text))
+        self.kv.add_chat(chat, "assistant", None, plain, int(self.now().timestamp()))
+        if sha:
+            said = self.t("edit_undo_said", paths=edits.paths_text(planned))
+            entry = {"sha": sha, "person": who, "said": said[:300]}
+            self.kv.update_json(f"undo:{chat}", lambda cur: [*(cur or []), entry][-UNDO_KEEP:], [])
+        log.info("edit written files=%d", len(planned))
+        return True
+
+    def ask_edits(self, chat: int, planned, users: Sequence[int], thread=None) -> None:
+        """Offer the edits with their diff and «Sí»/«No», for 12 hours, to the people the answer
+        covered (the admins, for `settings.yaml` or when nobody is known)."""
+        settings_edit = any(p.path == records.SETTINGS_FILE for p in planned)
+        by = [u for u in users if not settings_edit or self.is_admin(u)] or self.admin_uids()
+        offer = {
+            "key": secrets.token_hex(4),
+            "kind": "edit",
+            "for": by,
+            "items": [{"done": None}],
+            "planned": [{"path": p.path, "before": p.before, "after": p.after} for p in planned],
+            "ts": self.now().timestamp(),
+            "ttl": INSTR_TTL_S,
+            "thread": thread,
+        }
+        text = self.t("edit_ask", name=self.names(by), lines=self.edit_text(planned))
+        sent = self.post(chat, text, _keyboard(self.edit_rows(offer)), thread)
+        if sent is None:
+            return
+        offer["msg"] = sent.get("message_id")
+        self.keep_offer(chat, offer)
+        plain = html.unescape(re.sub(r"<[^>]+>", "", text))
+        self.kv.add_chat(chat, "assistant", None, plain, int(self.now().timestamp()))
+        log.info("edit offered files=%d", len(planned))
+
+    def edit_rows(self, offer: Mapping) -> list:
+        done = offer["items"][0].get("done")
+        if done:
+            label = {"yes": "button_yes", "no": "button_no"}.get(done, OFFER_GONE)
+            return [[("✓ " + self.t(label), "x")]]
+        key = offer["key"]
+        return [[(self.t("button_yes"), f"e:{key}:y"), (self.t("button_no"), f"e:{key}:n")]]
+
+    def tapped_edit(self, cq: Mapping, chat: int, data: str, user: object) -> None:
+        """«Sí» writes exactly the edits shown, if every file is still what it was then;
+        «No» leaves everything as it is."""
+        _, key, choice = [*data.split(":"), "", ""][:3]
+        mid = (cq.get("message") or {}).get("message_id")
+        offer = self.find_offer(chat, key)
+        if offer is None:
+            self.answer(cq["id"], self.t("tap_gone"))
+            self.unbutton(chat, mid)
+            return
+        if user not in offer.get("for", []):
+            self.answer(cq["id"], self.t("tap_not_yours", name=self.plain_names(offer["for"])))
+            return
+        if choice not in ("y", "n") or offer["items"][0].get("done"):
+            self.answer(cq["id"], self.t("tap_gone"))
+            return
+        offer["items"][0]["done"] = "yes" if choice == "y" else "no"
+        self.keep_offer(chat, offer)
+        self.answer(cq["id"])
+        self.rekey(chat, offer.get("msg"), self.edit_rows(offer))
+        thread = offer.get("thread")
+        if choice == "n":
+            self.post(chat, self.t("edit_kept"), thread=thread)
+            log.info("edit declined")
+            return
+        planned = [edits.Planned(x["path"], x["before"], x["after"]) for x in offer["planned"]]
+        p = self.person(user)
+        with DATA_LOCK:  # the files compared are the files committed over
+            self.repo.pull()
+            moved = any(self.repo._read(x.path) != _bytes(x.before) for x in planned)
+            files = None if moved else self.edit_files(planned)
+            if files is not None:
+                self.commit_edits(chat, planned, files, p.id if p else None, thread)
+                return
+        if moved:
+            self.post(chat, self.t("edit_moved"), thread=thread)
+            log.info("edit refused: moved")
+            return
+        self.post(chat, self.t("edit_check_failed"), thread=thread)
+
+
+def _bytes(text: str | None) -> bytes | None:
+    return None if text is None else text.encode("utf-8")
 
 
 def hm(value: object) -> str:

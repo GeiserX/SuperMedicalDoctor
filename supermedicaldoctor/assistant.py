@@ -47,7 +47,7 @@ WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", 
 APPOINTMENT_DAYS = 60  # context.md lists the pending appointments this far ahead
 DONE_SHOWN = 3  # and the last done ones
 
-BLOCK_KINDS = ("record", "settings")  # the fenced JSON blocks an answer may end with
+BLOCK_KINDS = ("record", "settings", "edit")  # the fenced JSON blocks an answer may end with
 _BLOCK = {k: re.compile(rf"```{k}[^\S\n]*\n(.*?)```", re.DOTALL) for k in BLOCK_KINDS}
 _UNCLOSED = {k: re.compile(rf"```{k}\b.*\Z", re.DOTALL) for k in BLOCK_KINDS}
 BAD_BLOCK = object()  # `extract` found a block whose JSON does not parse
@@ -83,11 +83,15 @@ def _module(path: str, mtime_ns: int) -> ModuleType:
         raise PluginError("plugin_load_failed")
     mod = importlib.util.module_from_spec(spec)
     sys.modules[name] = mod
+    # the plugin lives in the data checkout: compiling it must not leave __pycache__ there
+    writes, sys.dont_write_bytecode = sys.dont_write_bytecode, True
     try:
         spec.loader.exec_module(mod)
     except BaseException:
         sys.modules.pop(name, None)
         raise
+    finally:
+        sys.dont_write_bytecode = writes
     return mod
 
 
