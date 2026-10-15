@@ -76,6 +76,7 @@ TURN_FILES_MAX = 25 * 1024 * 1024  # the photos and files one turn carries at mo
 ECHO_MAX = 4000  # the «🎤» echo of a transcript is cut to this, in UTF-16 code units
 FILE_MIMES = ("application/pdf", "image/jpeg", "image/png", "image/heic", "image/heif")
 ADMIN_STATUSES = frozenset({"administrator", "creator"})
+ANONYMOUS_ADMIN = 1087968824  # Telegram's GroupAnonymousBot: an admin writing as the group
 NOT_MODIFIED = "message is not modified"
 POLL_S = 20  # getUpdates long poll
 WAIT_409_S = 30  # another poller holds the token: wait and keep the offset
@@ -533,6 +534,9 @@ class Bot:
         p = self.person(user)
         private = chat.get("type") == "private"
         if p is None:  # someone else in the group: never answered, maybe kept as context
+            frm = msg.get("from") or {}
+            if frm.get("id") == ANONYMOUS_ADMIN or msg.get("sender_chat"):
+                log.info("group text from an anonymous admin or a channel: not a person")
             self.log_seen(chat["id"], msg, text)
             return
         command = _COMMAND.match(text.strip())
@@ -549,6 +553,7 @@ class Bot:
         if content is not None:
             self.queue_text(chat["id"], msg, content, p, self._strip_mention(msg, text)[0])
         elif not private:
+            log.info("group text not for the bot: %s", self.not_addressed(msg, private))
             self.log_seen(chat["id"], msg, text)
 
     def sender(self, msg: Mapping) -> str:
@@ -581,12 +586,30 @@ class Bot:
         log.info("group line logged")
 
     def to_bot(self, msg: Mapping) -> bool:
+        """Whether the message replies to one of the bot's messages: Telegram says the replied
+        message is the bot's, or its id is one the bot sent in this chat, or (a reply from
+        another topic or chat) its origin is the bot."""
         reply = msg.get("reply_to_message") or {}
         if self.bot_id is not None and (reply.get("from") or {}).get("id") == self.bot_id:
             return True
         chat = (msg.get("chat") or {}).get("id")
+        own = self.kv.get_json(f"own:{chat}", []) or []
         mid = reply.get("message_id")
-        return isinstance(mid, int) and mid in (self.kv.get_json(f"own:{chat}", []) or [])
+        if isinstance(mid, int) and mid in own:
+            return True
+        external = msg.get("external_reply") or {}
+        origin = external.get("origin") or {}
+        if self.bot_id is not None and (origin.get("sender_user") or {}).get("id") == self.bot_id:
+            return True
+        same_chat = (external.get("chat") or {}).get("id") in (None, chat)
+        mid = external.get("message_id")
+        return same_chat and isinstance(mid, int) and mid in own
+
+    def not_addressed(self, msg: Mapping, private: bool) -> str:
+        """Why a group text was not for the bot, as a kind for the service log."""
+        if msg.get("reply_to_message") or msg.get("external_reply"):
+            return "reply to someone else"
+        return "not a reply and no mention"
 
     def addressed(self, msg: Mapping, text: str, private: bool, p: Person) -> str | None:
         """The line for the assistant when the message is meant for the bot, else None: a
@@ -600,10 +623,21 @@ class Bot:
             return None
         prefix = f"{p.name}: "
         if to_bot:
-            reply = msg.get("reply_to_message") or {}
-            quoted = reply.get("text") or reply.get("caption") or ""
-            prefix += f"[replying to the bot: {quoted}] "
+            prefix += f"[replying to the bot: {self.quoted(msg)}] "
         return prefix + body
+
+    @staticmethod
+    def quoted(msg: Mapping) -> str:
+        """What the reply quotes: the part the person selected (`quote`), else the replied
+        message's text or caption, whatever its formatting."""
+        quote = msg.get("quote") or {}
+        if isinstance(quote.get("text"), str) and quote["text"].strip():
+            return quote["text"]
+        for source in (msg.get("reply_to_message") or {}, msg.get("external_reply") or {}):
+            for key in ("text", "caption"):
+                if isinstance(source.get(key), str) and source[key].strip():
+                    return source[key]
+        return ""
 
     def _strip_mention(self, msg: Mapping, text: str, key: str = "entities") -> tuple[str, bool]:
         """Remove each `mention` entity equal to the bot's @username. Entity offsets count
