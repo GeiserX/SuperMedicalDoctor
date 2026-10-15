@@ -330,3 +330,17 @@ def test_a_file_arriving_mid_turn_is_not_handed_over(make_bot):
     bot.join_idle()
     assert got == [[]]
     assert len(plugin(bot).CALLS[1]["turn"]["attachments"]) == 1
+
+
+def test_loading_the_plugin_leaves_no_bytecode_in_the_data_checkout(
+    make_bot, data_repo, monkeypatch
+):
+    monkeypatch.setattr("sys.dont_write_bytecode", False)
+    monkeypatch.delenv("PYTHONDONTWRITEBYTECODE", raising=False)
+    bot = make_bot()
+    say(bot, "hola", mention=True)
+    assert plugin(bot).CALLS
+    assert not (data_repo.data / "plugins" / "__pycache__").exists()
+    import sys
+
+    assert sys.dont_write_bytecode is False  # put back as it was

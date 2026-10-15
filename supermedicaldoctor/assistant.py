@@ -83,11 +83,15 @@ def _module(path: str, mtime_ns: int) -> ModuleType:
         raise PluginError("plugin_load_failed")
     mod = importlib.util.module_from_spec(spec)
     sys.modules[name] = mod
+    # the plugin lives in the data checkout: compiling it must not leave __pycache__ there
+    writes, sys.dont_write_bytecode = sys.dont_write_bytecode, True
     try:
         spec.loader.exec_module(mod)
     except BaseException:
         sys.modules.pop(name, None)
         raise
+    finally:
+        sys.dont_write_bytecode = writes
     return mod
 
 

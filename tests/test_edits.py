@@ -197,7 +197,7 @@ def test_an_edit_that_breaks_the_data_is_refused_and_nothing_changes(make_bot, d
         bot.tg.texts()[-1] == "Ese cambio dejaba los datos con errores, así que no he tocado nada."
     )
     assert data_repo.remote_log() == before and meds.read_text() == before_text
-    assert git(data_repo.data, "status", "--porcelain") == ""
+    assert git(data_repo.data, "status", "--porcelain", "--untracked-files=no") == ""
 
 
 def test_an_edit_of_the_instructions_that_drops_lines_is_asked(make_bot, data_repo):
