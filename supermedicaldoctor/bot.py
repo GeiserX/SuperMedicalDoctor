@@ -74,6 +74,16 @@ TEXT_MAX = 4096  # Telegram's limit on one message, in UTF-16 code units
 FILE_MAX = 20 * 1024 * 1024  # the largest file the Bot API lets a bot download
 TURN_FILES_MAX = 25 * 1024 * 1024  # the photos and files one turn carries at most
 ECHO_MAX = 4000  # the «🎤» echo of a transcript is cut to this, in UTF-16 code units
+MEDIA = {
+    "animation": "animacion",
+    "video": "video",
+    "video_note": "videonota",
+    "sticker": "sticker",
+}
+STICKERS = {  # a sticker carries no mime type: its kind says what the file is
+    "is_animated": (".tgs", "application/x-tgsticker"),
+    "is_video": (".webm", "video/webm"),
+}
 ADMIN_STATUSES = frozenset({"administrator", "creator"})
 ANONYMOUS_ADMIN = 1087968824  # Telegram's GroupAnonymousBot: an admin writing as the group
 NOT_MODIFIED = "message is not modified"
@@ -524,7 +534,7 @@ class Bot:
         if msg.get("voice") or msg.get("audio"):
             self.on_voice(msg)
             return
-        if msg.get("photo") or msg.get("document"):
+        if msg.get("photo") or msg.get("document") or any(msg.get(k) for k in MEDIA):
             self.on_file(msg)
             return
         text = msg.get("text")
@@ -700,7 +710,7 @@ class Bot:
         log.info("voice queued")
 
     def on_file(self, msg: Mapping) -> None:
-        """A photo or a file of any kind from a person. In the group it is for the bot like a
+        """A photo, a video, a GIF, a round video, a sticker or a file of any kind from a person. In the group it is for the bot like a
         voice note: a lab sheet dropped in the doctor's group is meant for it. Its caption is the
         message. It is queued as a line naming the file, with its own name and extension; the
         bytes are fetched when the turn starts, and the assistant says when it cannot read one."""
@@ -718,6 +728,17 @@ class Bot:
             big = max(sizes, key=lambda s: (s.get("file_size") or 0, s.get("width") or 0))
             media = {"file_id": big["file_id"], "file_size": big.get("file_size")}
             name, mime, label = f"inbox/{mid}-foto.jpg", "image/jpeg", "foto"
+        elif kind := next((k for k in MEDIA if msg.get(k)), None):  # a GIF also has `document`
+            item = msg[kind]
+            if not item.get("file_id"):
+                return
+            if kind == "sticker":
+                flag = next((f for f in STICKERS if item.get(f)), None)
+                ext, mime = STICKERS[flag] if flag else (".webp", "image/webp")
+            else:
+                ext, mime = ".mp4", str(item.get("mime_type") or "video/mp4").lower()
+            media = {"file_id": item["file_id"], "file_size": item.get("file_size")}
+            name, label = f"inbox/{mid}-{MEDIA[kind]}{ext}", "archivo"
         else:
             doc = msg["document"]
             if not doc.get("file_id"):

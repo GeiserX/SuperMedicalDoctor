@@ -218,6 +218,45 @@ def test_a_file_of_any_kind_goes_to_the_assistant_with_its_own_name(make_bot, na
     ]
 
 
+@pytest.mark.parametrize(
+    "kind, item, saved, mime",
+    [
+        ("video", {"mime_type": "video/mp4"}, "video.mp4", "video/mp4"),
+        ("animation", {"mime_type": "video/mp4"}, "animacion.mp4", "video/mp4"),
+        ("video_note", {}, "videonota.mp4", "video/mp4"),
+        ("sticker", {}, "sticker.webp", "image/webp"),
+        ("sticker", {"is_video": True}, "sticker.webm", "video/webm"),
+        ("sticker", {"is_animated": True}, "sticker.tgs", "application/x-tgsticker"),
+    ],
+)
+def test_videos_gifs_and_stickers_go_to_the_assistant_as_files(make_bot, kind, item, saved, mime):
+    bot = make_bot()
+    bot.tg.files["m1"] = b"media"
+    msg = message("", user=LUCIA)
+    del msg["text"]
+    msg[kind] = {"file_id": "m1", "file_size": 5, **item}
+    if kind == "animation":  # Telegram sends a GIF as a document too
+        msg["document"] = {"file_id": "m1", "file_name": "x.gif.mp4", "mime_type": "video/mp4"}
+    bot.handle({"message": msg})
+    bot.join_idle()
+    path = f"inbox/{msg['message_id']}-{saved}"
+    assert contents(plugin(bot).CALLS[0]) == [f"Lucía: [archivo: {path}]"]
+    assert plugin(bot).CALLS[0]["turn"]["attachments"] == [
+        {"name": path, "mime": mime, "data": b"media", "from": "lucia"}
+    ]
+
+
+def test_a_video_too_big_is_refused_with_a_line(make_bot):
+    bot = make_bot()
+    msg = message("", user=LUCIA)
+    del msg["text"]
+    msg["video"] = {"file_id": "v", "file_size": 21 * 1024 * 1024, "mime_type": "video/mp4"}
+    bot.handle({"message": msg})
+    bot.join_idle()
+    assert plugin(bot).CALLS == []
+    assert "demasiado grande" in bot.tg.texts()[0]
+
+
 def test_a_file_too_big_is_refused_with_a_line(make_bot):
     bot = make_bot()
     big = _doc(file_id="big", name="x.zip", mime="application/zip")
