@@ -374,7 +374,6 @@ def set_lines(text: str, values: Mapping[tuple[str, str], object]) -> str:
     double-quoted scalar on one line; a block scalar (`|`, `>`) it replaces goes with it."""
     lines = text.splitlines(keepends=True)
     for (section, key), value in values.items():
-        rendered = _scalar(value)
         start = next(
             (
                 i
@@ -388,7 +387,7 @@ def set_lines(text: str, values: Mapping[tuple[str, str], object]) -> str:
                 raise ValueError("flow_section")  # `section: {...}`: not edited by line
             if lines and not lines[-1].endswith("\n"):
                 lines[-1] += "\n"
-            lines += [f"{section}:\n", f"  {key}: {rendered}\n"]
+            lines += [f"{section}:\n", f"  {key}: {_scalar(value)}\n"]
             continue
         end = start + 1
         while end < len(lines) and (not lines[end].strip() or lines[end][:1] in " \t#"):
@@ -418,33 +417,59 @@ def set_lines(text: str, values: Mapping[tuple[str, str], object]) -> str:
                 ):
                     j += 1
             eol = lines[i][len(body) :] or "\n"
-            lines[i:j] = [f"{indent}{key}:{m['sp'] or ' '}{rendered}{m['rest'] or ''}{eol}"]
+            rendered = _scalar(value, indent)
+            if "\n" in rendered:  # a block scalar: the comment goes on the key's line
+                head, _, tail = rendered.partition("\n")
+                rendered = f"{head}{m['rest'] or ''}\n{tail}"
+                lines[i:j] = [f"{indent}{key}:{m['sp'] or ' '}{rendered}{eol}"]
+            else:
+                lines[i:j] = [f"{indent}{key}:{m['sp'] or ' '}{rendered}{m['rest'] or ''}{eol}"]
             done = True
             break
         if not done:
-            lines.insert(end, f"{indent}{key}: {rendered}\n")
+            lines.insert(end, f"{indent}{key}: {_scalar(value, indent)}\n")
     return "".join(lines)
 
 
-def _scalar(value: object) -> str:
+def _scalar(value: object, indent: str = "  ") -> str:
+    """A YAML scalar for `set_lines`. A text of several lines becomes a `|-` block scalar
+    indented under its key, when it can round-trip as one (no line that starts with a space,
+    no trailing spaces, no tabs); anything else is a double-quoted string on one line."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, int):
         return str(value)
-    return json.dumps(str(value), ensure_ascii=False)
+    text = str(value)
+    lines = text.split("\n")
+    if (
+        len(lines) > 1
+        and lines[0].strip()
+        and all(x == x.strip() for x in lines)
+        and "\t" not in text
+        and not text.endswith("\n")
+    ):
+        inner = indent + "  "
+        return "|-\n" + "\n".join(inner + x if x else "" for x in lines)
+    return json.dumps(text, ensure_ascii=False)
 
 
 SETTINGS_BLOCK_KEYS = {
     ("reminders", "day_before_at"),
     ("reminders", "followup"),
     ("assistant", "instructions"),
+    ("assistant", "instructions_add"),
 }
+INSTRUCTIONS = ("assistant", "instructions")
+INSTRUCTIONS_ADD = ("assistant", "instructions_add")
+ADD_LINES_MAX, ADD_LINE_CHARS = 20, 500  # lines one `instructions_add` may append
 
 
 def validate_settings(block: object, admin: bool) -> dict[tuple[str, str], object]:
     """A `settings` block, all or nothing: `{"reminders": {"day_before_at": "HH:MM",
-    "followup": bool}, "assistant": {"instructions": str}}`, the last for admins only, at most
-    4,000 characters. Dotted keys (`"reminders.followup"`) are accepted too."""
+    "followup": bool}, "assistant": {"instructions": str, "instructions_add": [str]}}`, the
+    `assistant` keys for admins only. `instructions` is the whole new text, at most 4,000
+    characters; `instructions_add` lists lines to append, and the two never come together.
+    Dotted keys (`"reminders.followup"`) are accepted too."""
     if not isinstance(block, Mapping) or not block:
         raise BlockError("bad_settings")
     flat: dict[tuple[str, str], object] = {}
@@ -473,10 +498,60 @@ def validate_settings(block: object, admin: bool) -> dict[tuple[str, str], objec
         else:
             if not admin:
                 raise BlockError("admins_only")
-            if not isinstance(v, str) or len(v) > INSTRUCTIONS_MAX:
+            if k == INSTRUCTIONS_ADD:
+                lines = v if isinstance(v, list) else None
+                if (
+                    not lines
+                    or len(lines) > ADD_LINES_MAX
+                    or any(not isinstance(x, str) or not x.strip() for x in lines)
+                    or any(len(x) > ADD_LINE_CHARS for x in lines)
+                ):
+                    raise BlockError("bad_instructions")
+                out[k] = [x.strip() for x in lines]
+            elif not isinstance(v, str) or len(v) > INSTRUCTIONS_MAX:
                 raise BlockError("bad_instructions")
-            out[k] = v
+            else:
+                out[k] = v
+    if INSTRUCTIONS in out and INSTRUCTIONS_ADD in out:
+        raise BlockError("bad_instructions")
     return out
+
+
+def instruction_lines(text: str) -> list[str]:
+    """The non-empty lines of an instructions text, stripped."""
+    return [x.strip() for x in str(text or "").splitlines() if x.strip()]
+
+
+def add_instructions(current: str, lines: list[str]) -> str:
+    """`current` with `lines` appended, each once: a line already there is not repeated."""
+    out = instruction_lines(current)
+    seen = {x.casefold() for x in out}
+    for line in lines:
+        if line.casefold() not in seen:
+            out.append(line)
+            seen.add(line.casefold())
+    return "\n".join(out)
+
+
+def instruction_diff(old: str, new: str) -> tuple[list[str], list[str]]:
+    """The lines `new` adds and the lines it drops, as `(added, removed)`, each in its own
+    order. A line repeated counts once per copy; blank lines and indentation do not count."""
+    from collections import Counter
+
+    before, after = instruction_lines(old), instruction_lines(new)
+    gone = Counter(before) - Counter(after)
+    came = Counter(after) - Counter(before)
+    removed = []
+    for x in before:
+        if gone[x] > 0:
+            removed.append(x)
+            gone[x] -= 1
+    added = []
+    for x in after:
+        if came[x] > 0:
+            added.append(x)
+            came[x] -= 1
+    return added, removed
 
 
 # --- a person's files ----------------------------------------------------------------------

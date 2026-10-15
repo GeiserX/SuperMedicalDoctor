@@ -487,3 +487,28 @@ def test_slug_and_fasting_words():
 
 def test_the_profile_seed_is_the_contract_example():
     assert yaml.safe_load(LUCIA_PROFILE)["doctors"][0]["id"] == "endo"
+
+
+def test_instruction_diff_and_add():
+    old = "Uno.\nDos.\n\n  Tres.  "
+    assert records.instruction_diff(old, "Uno.\nTres.\nCuatro.") == (["Cuatro."], ["Dos."])
+    assert records.instruction_diff(old, "Uno.\nDos.\nTres.") == ([], [])
+    assert records.add_instructions(old, ["dos.", "Cinco."]) == "Uno.\nDos.\nTres.\nCinco."
+    with pytest.raises(BlockError, match="bad_instructions"):
+        records.validate_settings(
+            {"assistant": {"instructions": "x", "instructions_add": ["y"]}}, admin=True
+        )
+    with pytest.raises(BlockError, match="admins_only"):
+        records.validate_settings({"assistant": {"instructions_add": ["y"]}}, admin=False)
+
+
+def test_set_lines_writes_several_lines_as_a_block_and_keeps_the_comment():
+    text = 'assistant:\n  plugin: p.py\n  instructions: "uno"   # the household\n  model: null\n'
+    out = records.set_lines(text, {("assistant", "instructions"): "Uno.\nDos."})
+    assert out == (
+        "assistant:\n  plugin: p.py\n  instructions: |-   # the household\n    Uno.\n    Dos.\n"
+        "  model: null\n"
+    )
+    assert yaml.safe_load(out)["assistant"]["instructions"] == "Uno.\nDos."
+    awkward = records.set_lines(text, {("assistant", "instructions"): "Uno.\n  indented"})
+    assert yaml.safe_load(awkward)["assistant"]["instructions"] == "Uno.\n  indented"

@@ -152,6 +152,9 @@ settings_day_before_at: "the evening-before reminder, at {time}"
 settings_followup_on: "I ask after each appointment"
 settings_followup_off: "I no longer ask after each appointment"
 settings_instructions: "my standing instructions"
+instr_ask: "{name}, this removes or changes lines of my instructions. Shall I leave them like this?\n{lines}\n\nIf you do not answer, I do nothing."
+instr_kept: "OK, I keep my instructions as they were."
+instr_moved: "My instructions changed since I asked, so I touched nothing. Ask me again."
 
 # --- context.md ----------------------------------------------------------------------------
 ctx_today: "Today"
