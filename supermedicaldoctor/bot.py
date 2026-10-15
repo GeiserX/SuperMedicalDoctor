@@ -3052,12 +3052,15 @@ class Bot:
                 edits.allowed(
                     e.path, self.settings, scope=scope, asker=asker, private=private, admin=admin
                 )
-            with DATA_LOCK:
+            with DATA_LOCK:  # from the plan to the commit, nothing else writes
                 self.repo.pull()
                 planned = edits.plan(self.data, wanted)
                 if not planned:
                     return True
                 files = self.edit_files(planned)
+                ask = not asked or any(p.big or edits.instructions_dropped(p) for p in planned)
+                if files is not None and not ask:
+                    return self.commit_edits(chat, planned, files, asker, thread)
         except BlockError as e:
             log.warning("edit refused: %s", e.code)
             self.post(chat, self.t("edit_refused"), thread=thread)
@@ -3065,11 +3068,8 @@ class Bot:
         if files is None:
             self.post(chat, self.t("edit_check_failed"), thread=thread)
             return False
-        ask = not asked or any(p.big or edits.instructions_dropped(p) for p in planned)
-        if ask:
-            self.ask_edits(chat, planned, users, thread)
-            return True
-        return self.commit_edits(chat, planned, files, asker, thread)
+        self.ask_edits(chat, planned, users, thread)
+        return True
 
     def edit_files(self, planned: Sequence[edits.Planned]) -> dict | None:
         """The files one commit of `planned` writes: the edits and, when a person's file
@@ -3178,18 +3178,18 @@ class Bot:
             return
         planned = [edits.Planned(x["path"], x["before"], x["after"]) for x in offer["planned"]]
         p = self.person(user)
-        with DATA_LOCK:
+        with DATA_LOCK:  # the files compared are the files committed over
             self.repo.pull()
             moved = any(self.repo._read(x.path) != _bytes(x.before) for x in planned)
             files = None if moved else self.edit_files(planned)
+            if files is not None:
+                self.commit_edits(chat, planned, files, p.id if p else None, thread)
+                return
         if moved:
             self.post(chat, self.t("edit_moved"), thread=thread)
             log.info("edit refused: moved")
             return
-        if files is None:
-            self.post(chat, self.t("edit_check_failed"), thread=thread)
-            return
-        self.commit_edits(chat, planned, files, p.id if p else None, thread)
+        self.post(chat, self.t("edit_check_failed"), thread=thread)
 
 
 def _bytes(text: str | None) -> bytes | None:

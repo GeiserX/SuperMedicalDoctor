@@ -11,7 +11,10 @@ never knows which provider answers.
 - **The group** (`telegram.chat_id`, a supergroup) and **private chats with a person** in
   `settings.people`. Everyone else is ignored; a stranger's tap gets a toast.
 - In the group, a text reaches the assistant when it **mentions the bot** or **replies to one of
-  its messages**. Every **voice note**, **photo** and **file** (PDF, JPEG, PNG, HEIC) from a person
+  its messages**: a reply Telegram marks as the bot's, a reply to any id the bot remembers sending
+  in that chat, or a reply from another topic or chat (`external_reply`) whose origin is the bot.
+  The quoted part goes with it. A group text that does not reach it leaves one log line saying
+  why (a reply to someone else, no reply and no mention, an anonymous admin), never its words. Every **voice note**, **photo** and **file** (PDF, JPEG, PNG, HEIC) from a person
   reaches it too: a voice note cannot carry a mention, and a lab sheet dropped in the doctor's group
   is meant for the doctor. The caption is the message.
 - With `history_scope: all`, the group's other messages are kept in the chat log and go to the next
