@@ -80,6 +80,17 @@ MEDIA = {
     "video_note": "videonota",
     "sticker": "sticker",
 }
+# what a replied-to message was, for the line that names it: a message has one of these
+REPLIED_KINDS = (
+    ("photo", "photo"),
+    ("document", "file"),
+    ("video", "video"),
+    ("animation", "video"),
+    ("video_note", "video"),
+    ("sticker", "sticker"),
+    ("voice", "voice"),
+    ("audio", "voice"),
+)
 STICKERS = {  # a sticker carries no mime type: its kind says what the file is
     "is_animated": (".tgs", "application/x-tgsticker"),
     "is_video": (".webm", "video/webm"),
@@ -586,7 +597,7 @@ class Bot:
             chat,
             "user",
             name,
-            f"{name}: {body}",
+            f"{name}{self.replied(msg)}: {body}",
             now,
             body=body,
             mid=msg.get("message_id"),
@@ -630,10 +641,29 @@ class Bot:
         body = body.strip()
         if not body:
             return None
-        prefix = f"{p.name}: "
+        prefix = f"{p.name}{self.replied(msg)}: "
         if to_bot:
             prefix += f"[replying to the bot: {self.quoted(msg)}] "
         return prefix + body
+
+    def replied(self, msg: Mapping) -> str:
+        """« (replying to <sender>'s <kind> of <UTC date>)» when the message replies to an
+        earlier message of a person, else "". The date, not the message id, finds that message
+        in the chat's history: a basic group's Bot API ids are not the history's. Nothing for a
+        reply to the bot (its line quotes it) or the start of a forum topic, which every message
+        in the topic replies to."""
+        reply = msg.get("reply_to_message")
+        if not isinstance(reply, Mapping) or self.to_bot(msg):
+            return ""
+        if reply.get("forum_topic_created") or (
+            msg.get("is_topic_message") and reply.get("message_id") == msg.get("message_thread_id")
+        ):
+            return ""
+        date = reply.get("date")
+        if not isinstance(date, int) or isinstance(date, bool):
+            return ""
+        kind = next((k for key, k in REPLIED_KINDS if reply.get(key)), "text")
+        return f" (replying to {self.sender(reply)}'s {kind} of {_iso(date)})"
 
     @staticmethod
     def quoted(msg: Mapping) -> str:
@@ -706,6 +736,7 @@ class Bot:
             "mime": str(media.get("mime_type") or "audio/ogg"),
         }
         line["who"] = p.name
+        line["replied"] = self.replied(msg)
         self.queue_line(chat["id"], line)
         log.info("voice queued")
 
@@ -759,7 +790,7 @@ class Bot:
         caption = str(msg.get("caption") or "")
         body = self._strip_mention(msg, caption, "caption_entities")[0].strip()
         line["file"] = {"file_id": media["file_id"], "name": name, "mime": mime, "size": size}
-        line["content"] = f"{p.name}: [{label}: {name}] {body}".rstrip()
+        line["content"] = f"{p.name}{self.replied(msg)}: [{label}: {name}] {body}".rstrip()
         line["body"] = body
         if not self.has_assistant:
             self.post(chat["id"], self.t("no_ai"), thread=line["thread"])
@@ -2763,7 +2794,7 @@ class Bot:
                         if x.get("id") == line_id and "voice" in x:
                             if content is None:
                                 continue
-                            x = {k: v for k, v in x.items() if k not in ("voice", "who")}
+                            x = {k: v for k, v in x.items() if k not in ("voice", "who", "replied")}
                             x["content"] = content
                             x["row"] = row
                         out.append(x)
@@ -2824,7 +2855,7 @@ class Bot:
             thread=thread,
             reply_parameters=note,
         )
-        return f"{line.get('who') or ''}: [voice note] {text}"
+        return f"{line.get('who') or ''}{line.get('replied') or ''}: [voice note] {text}"
 
     def say(
         self,

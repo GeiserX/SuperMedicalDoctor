@@ -240,6 +240,98 @@ def test_a_reply_to_a_remembered_message_without_its_sender_reaches_the_bot(make
     assert contents(plugin(bot).CALLS[-1])[-1] == "Pablo: [replying to the bot: ] vale"
 
 
+# --- replies to a person's earlier message ---------------------------------------------------
+
+EARLIER = 1792000000  # 2026-10-14T17:46:40+00:00
+SAID = "of 2026-10-14T17:46:40+00:00)"
+
+
+def _earlier(user=PABLO, **kind):
+    return {"message_id": 40, "from": {"id": user}, "date": EARLIER, **kind}
+
+
+def test_a_reply_to_someones_earlier_photo_says_whose_what_and_when(make_bot):
+    """The bot never saw that photo: the line must name it, by its date, so the assistant can
+    find it in the chat's history ("¿has visto mi foto?")."""
+    bot = make_bot()
+    msg = message("¿la has visto?", mention=True)
+    msg["reply_to_message"] = _earlier(photo=[{"file_id": "p0", "width": 90}])
+    bot.handle({"message": msg})
+    bot.join_idle()
+    assert contents(plugin(bot).CALLS[-1])[-1] == (
+        f"Lucía (replying to Pablo's photo {SAID}: ¿la has visto?"
+    )
+
+
+def test_the_kind_of_the_replied_message_is_named(make_bot):
+    bot = make_bot()
+    for kind, said in (
+        ({"document": {"file_id": "d0"}}, "file"),
+        ({"video_note": {"file_id": "n0"}}, "video"),
+        ({"voice": {"file_id": "v0"}}, "voice"),
+        ({"text": "mañana voy"}, "text"),
+    ):
+        msg = message("¿y esto?", mention=True)
+        msg["reply_to_message"] = _earlier(user=LUCIA, **kind)
+        bot.handle({"message": msg})
+        bot.join_idle()
+        assert contents(plugin(bot).CALLS[-1])[-1] == (
+            f"Lucía (replying to Lucía's {said} {SAID}: ¿y esto?"
+        )
+
+
+def test_a_reply_in_a_photo_a_voice_note_and_unaddressed_talk_names_it_too(make_bot):
+    bot = make_bot()
+    say(bot, "hola", mention=True)
+    msg = message("", user=PABLO)
+    del msg["text"]
+    msg["photo"] = [{"file_id": "big", "file_size": 3, "width": 1280}]
+    msg["reply_to_message"] = _earlier(user=LUCIA, text="¿qué te dijo?")
+    bot.tg.files["big"] = b"BIG"
+    bot.handle({"message": msg})
+    bot.join_idle()
+    assert contents(plugin(bot).CALLS[-1])[-1].startswith(
+        f"Pablo (replying to Lucía's text {SAID}: [foto: inbox/"
+    )
+    plugin(bot).VOICES[:] = ["sí, esa"]
+    bot.tg.files["v1"] = b"OggS"
+    msg = message("", user=PABLO)
+    del msg["text"]
+    msg["voice"] = {"file_id": "v1"}
+    msg["reply_to_message"] = _earlier(user=LUCIA, text="¿qué te dijo?")
+    bot.handle({"message": msg})
+    bot.join_idle()
+    assert contents(plugin(bot).CALLS[-1])[-1] == (
+        f"Pablo (replying to Lucía's text {SAID}: [voice note] sí, esa"
+    )
+    msg = message("ya te dije")
+    msg["reply_to_message"] = _earlier(photo=[{"file_id": "p0"}])
+    bot.handle({"message": msg})
+    say(bot, "¿y tú?", mention=True)
+    assert f"[not to you] Lucía (replying to Pablo's photo {SAID}: ya te dije" in contents(
+        plugin(bot).CALLS[-1]
+    )
+
+
+def test_a_reply_to_the_bot_or_to_the_start_of_a_topic_names_no_earlier_message(make_bot):
+    bot = make_bot()
+    msg = message("vale", user=PABLO)
+    msg["reply_to_message"] = {**_earlier(user=999), "from": {"id": 999, "is_bot": True}}
+    msg["reply_to_message"]["text"] = "¿Algo más?"
+    bot.handle({"message": msg})
+    bot.join_idle()
+    assert contents(plugin(bot).CALLS[-1])[-1] == "Pablo: [replying to the bot: ¿Algo más?] vale"
+    msg = message("¿y hoy?", mention=True, thread=7)
+    msg["reply_to_message"] = {
+        **_earlier(),
+        "message_id": 7,
+        "forum_topic_created": {"name": "Citas"},
+    }
+    bot.handle({"message": msg})
+    bot.join_idle()
+    assert contents(plugin(bot).CALLS[-1])[-1] == "Lucía: ¿y hoy?"
+
+
 def test_every_message_the_bot_sends_is_remembered(make_bot):
     """Answers (split or not), «Anotado» lines, offers and asks: a reply to any of them is
     for the bot."""
