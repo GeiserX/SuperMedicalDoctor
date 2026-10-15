@@ -3,6 +3,7 @@ files, the sources, the attachments and the calendars it gets, and one answer pe
 
 import time
 
+import pytest
 from conftest import GROUP, LUCIA, PABLO, STRANGER
 from helpers import contents, message, plugin, say, sent
 
@@ -344,3 +345,78 @@ def test_loading_the_plugin_leaves_no_bytecode_in_the_data_checkout(
     import sys
 
     assert sys.dont_write_bytecode is False  # put back as it was
+
+
+# --- nothing waits for someone to write again ----------------------------------------------
+
+
+def test_a_handed_over_message_the_answer_did_not_cover_gets_its_own_turn(make_bot):
+    """Its own arrival queued the chat again, so it is answered without anyone writing."""
+    bot = make_bot()
+    late = message("y otra cosa", mention=True)
+
+    def handover(turn):
+        bot.handle({"message": late})
+        assert len(turn["incoming"]()) == 1
+        return {"text": "Primera.", "conversation": "c", "kept": True, "covers": []}
+
+    plugin(bot).REPLIES[:] = [handover]
+    say(bot, "una cosa", mention=True)
+    bot.join_idle()
+    assert len(plugin(bot).CALLS) == 2  # nobody wrote again
+    assert contents(plugin(bot).CALLS[1]) == ["Lucía: y otra cosa"]
+    assert bot.tg.texts() == ["Primera.", "Vale."]
+
+
+def _restart(bot, data_repo):
+    """The old process is gone (its threads with it); a new one starts on the same data."""
+    from conftest import FakeTelegram
+
+    from supermedicaldoctor.bot import Bot
+
+    bot.close()
+    new = Bot(data_repo.data, FakeTelegram(), now=bot.now)
+    new.debounce_s = 0
+    new.start()
+    new.resume()
+    new.join_idle()
+    return new
+
+
+def test_a_line_queued_before_a_restart_is_answered_after_it(make_bot, data_repo):
+    bot = make_bot()
+    bot.worker.stop()  # the process dies before the turn starts
+    bot.handle({"message": message("¿qué tomo?", mention=True)})
+    assert len(bot.kv.get_json(f"pending:{GROUP}")) == 1
+    new = _restart(bot, data_repo)
+    try:
+        assert contents(plugin(new).CALLS[-1]) == ["Lucía: ¿qué tomo?"]
+        assert new.tg.texts() == ["Vale."]
+        assert new.kv.get_json(f"pending:{GROUP}") is None
+    finally:
+        new.close()
+
+
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnhandledThreadExceptionWarning")
+def test_a_turn_killed_mid_flight_is_replayed_after_a_restart(make_bot, data_repo):
+    from supermedicaldoctor.bot import Interrupted
+
+    bot = make_bot()
+
+    def dies(*a, **kw):
+        raise Interrupted  # not an Exception: it ends the worker as a SIGKILL ends a process
+
+    bot._converse = dies
+    bot.handle({"message": message("¿qué tomo?", mention=True)})
+    deadline = time.monotonic() + 5
+    while bot.worker._thread.is_alive() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert not bot.worker._thread.is_alive() and bot.tg.texts() == []
+    assert len(bot.kv.get_json(f"pending:{GROUP}")) == 1  # the input outlived the turn
+    new = _restart(bot, data_repo)
+    try:
+        assert contents(plugin(new).CALLS[-1]) == ["Lucía: ¿qué tomo?"]
+        assert new.tg.texts() == ["Vale."]
+        assert new.kv.get_json(f"pending:{GROUP}") is None
+    finally:
+        new.close()
