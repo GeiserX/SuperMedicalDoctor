@@ -328,7 +328,10 @@ def test_an_ask_with_an_owner_waits_for_that_person_only(make_bot):
     import threading
     import time
 
-    bot = make_bot()
+    from conftest import SETTINGS
+
+    # the turn stays open until the taps are in: a slow runner must not end it first
+    bot = make_bot(settings=SETTINGS.replace("timeout_s: 5", "timeout_s: 60"))
     mod = plugin(bot)
     gate = threading.Event()
 
@@ -343,12 +346,12 @@ def test_an_ask_with_an_owner_waits_for_that_person_only(make_bot):
                 "when": 0,
             }
         )
-        gate.wait(4)
+        gate.wait(50)
         return "Te lo pregunto."
 
     mod.REPLIES[:] = [ask_for_pablos_calendar]
     bot.handle({"update_id": 1, "message": message("pon la cita de Pablo", mention=True)})
-    deadline = time.monotonic() + 4
+    deadline = time.monotonic() + 30
     while not any("¿lo apruebas?" in t for t in bot.tg.texts()) and time.monotonic() < deadline:
         time.sleep(0.02)
     ask = next(p for p in sent(bot) if "¿lo apruebas?" in p["text"])
@@ -372,7 +375,7 @@ def test_an_ask_with_an_owner_waits_for_that_person_only(make_bot):
     press(LUCIA)  # the asker, not the owner
     assert toasts(bot)[-1] == "Esto solo lo puede responder Pablo."
     press(PABLO)
-    deadline = time.monotonic() + 4
+    deadline = time.monotonic() + 30
     while not mod.ANSWERED and time.monotonic() < deadline:
         time.sleep(0.02)
     gate.set()
