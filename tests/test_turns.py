@@ -185,16 +185,47 @@ def test_a_photo_takes_the_largest_size(make_bot):
     assert contents(plugin(bot).CALLS[0])[0].startswith("Pablo: [foto: inbox/")
 
 
-def test_a_file_of_another_kind_or_too_big_is_refused_with_a_line(make_bot):
+@pytest.mark.parametrize(
+    "name, mime, saved",
+    [
+        (
+            "Informe alta.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "Informe-alta.docx",
+        ),
+        ("tensión.csv", "text/csv", "tension.csv"),
+        ("Analitica", "application/pdf", "Analitica.pdf"),
+        ("", "", "documento"),
+    ],
+)
+def test_a_file_of_any_kind_goes_to_the_assistant_with_its_own_name(make_bot, name, mime, saved):
     bot = make_bot()
-    bot.handle({"message": _doc(mime="application/zip", name="x.zip")})
-    big = _doc(file_id="big")
+    bot.tg.files["f1"] = b"bytes"
+    msg = _doc(file_id="f1", name=name, mime=mime)
+    if not mime:
+        del msg["document"]["mime_type"]
+    bot.handle({"message": msg})
+    bot.join_idle()
+    path = f"inbox/{msg['message_id']}-{saved}"
+    assert contents(plugin(bot).CALLS[0]) == [f"Lucía: [archivo: {path}]"]
+    assert plugin(bot).CALLS[0]["turn"]["attachments"] == [
+        {
+            "name": path,
+            "mime": mime or "application/octet-stream",
+            "data": b"bytes",
+            "from": "lucia",
+        }
+    ]
+
+
+def test_a_file_too_big_is_refused_with_a_line(make_bot):
+    bot = make_bot()
+    big = _doc(file_id="big", name="x.zip", mime="application/zip")
     big["document"]["file_size"] = 21 * 1024 * 1024
     bot.handle({"message": big})
     bot.join_idle()
     assert plugin(bot).CALLS == []
-    texts = bot.tg.texts()
-    assert texts[0].startswith("Solo leo PDF y fotos") and "demasiado grande" in texts[1]
+    assert "demasiado grande" in bot.tg.texts()[0]
 
 
 def test_files_past_the_turn_budget_go_in_a_turn_of_their_own(make_bot, monkeypatch):
