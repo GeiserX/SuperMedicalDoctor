@@ -1369,6 +1369,8 @@ class Bot:
         private = bool(lines[0].get("private"))
         askers = list(dict.fromkeys(x.get("pid") for x in lines if x.get("pid")))
         asker = askers[0] if len(askers) == 1 else None
+        # several people batched in one turn: the one whose message started it
+        starter = next((x["uid"] for x in lines if x.get("uid")), None)
         with self._conv_lock:
             resets = self._resets[chat]
             conversation = self.kv.get(f"conv:{chat}")
@@ -1418,6 +1420,8 @@ class Bot:
                     {"name": a.name, "mime": a.mime, "data": a.data, "from": a.who} for a in atts
                 ],
                 calendars={pid: s.people[pid].calendar for pid in scope if s.people[pid].calendar},
+                chat=chat,
+                user=starter,
             )
             turn["incoming"] = self._incoming(state, key)
             if assistant.asks(self.data, block_cfg.get("plugin")):

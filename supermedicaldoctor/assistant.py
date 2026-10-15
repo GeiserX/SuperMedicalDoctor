@@ -362,10 +362,13 @@ def turn(
     sources: Mapping[str, str],
     attachments: Sequence[Mapping],
     calendars: Mapping[str, str],
+    chat: int | None = None,
+    user: int | None = None,
 ) -> dict:
     """The dict a plugin's `converse` gets: the new lines oldest first (a line is its text, or
-    `{"content", "ts"}`), the chat's earlier log as `history` (`{"role", "content", "ts"}`), and
-    the data of the people in `scope` only."""
+    `{"content", "ts"}`), the chat's earlier log as `history` (`{"role", "content", "ts"}`), the
+    data of the people in `scope` only, and `chat`: the Telegram chat id and the user id of the
+    person whose message started the turn."""
     lines = []
     for x in new:
         item = {"role": "user", "content": x if isinstance(x, str) else x["content"]}
@@ -384,6 +387,7 @@ def turn(
         "calendars": dict(calendars),
         "new": lines,
         "history": [dict(h) for h in history],
+        "chat": {"id": chat, "user": user},
     }
 
 

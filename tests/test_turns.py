@@ -56,6 +56,7 @@ def test_a_group_turn_carries_everyone_and_the_contract_keys(make_bot):
     settings = plugin(bot).CALLS[0]["settings"]
     assert turn["scope"] == ["lucia", "pablo"]
     assert turn["asker"] == "lucia"
+    assert turn["chat"] == {"id": GROUP, "user": LUCIA}
     assert set(turn["files"]) == {
         "data/settings.yaml",
         "data/people/lucia/profile.yaml",
@@ -87,6 +88,7 @@ def test_a_private_turn_carries_only_the_asker(make_bot):
     turn = plugin(bot).CALLS[0]["turn"]
     assert turn["scope"] == ["pablo"]
     assert turn["asker"] == "pablo"
+    assert turn["chat"] == {"id": PABLO, "user": PABLO}  # a private chat's id is the person's
     assert not any("lucia" in k for k in turn["files"])
     assert turn["calendars"] == {"pablo": "cal-pablo"}
     assert "Levotiroxina" not in turn["context"] and "Analítica" not in turn["context"]
@@ -111,6 +113,7 @@ def test_a_turn_with_two_peoples_messages_has_no_asker(make_bot):
     bot.join_idle()
     turn = plugin(bot).CALLS[0]["turn"]
     assert turn["asker"] is None
+    assert turn["chat"] == {"id": GROUP, "user": LUCIA}  # the person whose message started it
     assert len(plugin(bot).CALLS) == 1  # one answer for the burst
 
 

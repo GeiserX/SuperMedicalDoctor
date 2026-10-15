@@ -62,6 +62,7 @@ def answer(request: dict, decision: dict, settings: dict) -> dict: ...  # option
 | `sources` | `{"sources/<name>/<path>": text}` for source files whose person is in the scope |
 | `attachments` | `[{"name": "inbox/<message id>-<safe name>", "mime", "data": bytes, "from": person}]` |
 | `calendars` | `{person: calendar string}` for the scope |
+| `chat` | `{"id", "user"}`: the Telegram chat id and the user id of the person whose message started the turn (the first one when several people's lines are batched), so a plugin can reach this chat's own history |
 | `incoming` | a callable: lines that arrived while the turn runs |
 | `ask` | a callable, when the plugin defines `answer`: post an action for approval |
 
