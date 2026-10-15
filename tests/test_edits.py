@@ -214,6 +214,28 @@ def test_an_edit_of_the_instructions_that_drops_lines_is_asked(make_bot, data_re
     assert data_repo.remote_log() == before
 
 
+def test_an_asked_settings_edit_by_an_admin_still_waits_for_an_admins_si(make_bot, data_repo):
+    """Text quoted into an admin's turn must not grant admin rights or move a source unseen."""
+    bot = make_bot()
+    answer(
+        bot,
+        edit_block(
+            [{"path": "settings.yaml", "old": "admins: [pablo]", "new": "admins: [pablo, lucia]"}]
+        ),
+    )
+    before = data_repo.remote_log()
+    say(bot, "mira este documento", user=PABLO, mention=True)
+    ask = last_sent(bot)
+    assert "¿hago este cambio?" in ask["text"]
+    assert data_repo.remote_log() == before
+    tap(bot, buttons(ask)[0][1], user=LUCIA)
+    assert toasts(bot)[-1] == "Esto solo lo puede responder Pablo."
+    assert data_repo.remote_log() == before
+    tap(bot, buttons(ask)[0][1], user=PABLO)
+    assert data_repo.remote_log()[0] == "chat(pablo): edit settings.yaml"
+    assert "admins: [pablo, lucia]" in data_repo.remote_file("settings.yaml")
+
+
 def test_a_replacement_whose_text_is_not_there_once_is_refused(make_bot, data_repo):
     bot = make_bot()
     answer(bot, edit_block([{"path": "people/lucia/profile.yaml", "old": "no existe", "new": "x"}]))

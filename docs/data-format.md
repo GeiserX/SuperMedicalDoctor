@@ -201,13 +201,13 @@ exact replacement (`old`, `new`) or `delete: true`.
 | path | who |
 |---|---|
 | `people/<id>/**` (not `labs.jsonl`, not `documents/`) | in the group, anyone; in a private chat, only that person; an admin, always |
-| `settings.yaml` | admins; dropping an instruction line waits for «Sí» |
+| `settings.yaml` | admins, and every change waits for an admin's «Sí» |
 | `docs/HEALTH.md` and every path in `editable` | in the group, or an admin |
 
 The edits are tried on a copy and must pass `smd check`; then they are committed with the
 regenerated export, the change is shown line by line, and `/deshacer` reverts it. An edit the
-assistant proposes on its own, the deletion of a file and the removal of more than half of one
-wait for «Sí». At most 10 edits and 60,000 characters per answer, 20,000 per edit.
+assistant proposes on its own, the deletion of a file, the removal of more than half of one and
+any change to `settings.yaml` wait for «Sí». At most 10 edits and 60,000 characters per answer, 20,000 per edit.
 
 ## The commits
 

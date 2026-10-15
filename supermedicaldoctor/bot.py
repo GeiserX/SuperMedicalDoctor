@@ -3045,8 +3045,8 @@ class Bot:
         """The ```edit blocks of an answer, checked all or nothing: every path allowed for
         this chat and person, the result sound on a copy (`smd check`). An edit the person
         asked for is committed at once and confirmed with its diff; one the assistant proposes,
-        the deletion of a file, more than half of one, or a line of the instructions waits for
-        a «Sí»."""
+        the deletion of a file, more than half of one, or any change to `settings.yaml` (admins,
+        people, sources: text quoted into a turn must not grant them) waits for a «Sí»."""
         try:
             if any(b is assistant.BAD_BLOCK for b in blocks):
                 raise BlockError("bad_json")
@@ -3062,7 +3062,10 @@ class Bot:
                 if not planned:
                     return True
                 files = self.edit_files(planned)
-                ask = not asked or any(p.big or edits.instructions_dropped(p) for p in planned)
+                ask = not asked or any(
+                    p.big or p.path == records.SETTINGS_FILE or edits.instructions_dropped(p)
+                    for p in planned
+                )
                 if files is not None and not ask:
                     return self.commit_edits(chat, planned, files, asker, thread)
         except BlockError as e:

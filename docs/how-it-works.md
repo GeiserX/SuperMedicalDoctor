@@ -89,8 +89,8 @@ The app takes fenced blocks out of `text`; nobody sees them.
 - **`edit`** (JSON): `{"asked": bool, "edits": [{"path", "content" | "old"+"new" | "delete"}]}`,
   file edits inside the allowed paths ([data format](data-format.md)), checked on a copy, committed
   with the export as `chat(<person>): edit …`, shown line by line and undone by `/deshacer`. Only
-  an edit the person asked for goes at once; a proposed one, a file deletion or more than half of
-  one waits for «Sí».
+  an edit the person asked for goes at once; a proposed one, a file deletion, more than half of
+  one or any change to `settings.yaml` waits for «Sí» (from an admin, for `settings.yaml`).
 - **`options`**: up to five choices as buttons, for the people the answer covered, for 12 hours. A
   tap is that person's next message. «Sí»/«No» get their own hint line.
 - **`reminders`**: `- YYYY-MM-DD HH:MM | text [| person]`, offered under the answer with

@@ -83,7 +83,7 @@ that resolved, «apúntalo»), end your answer with one edit block (after any re
                           {"path": "people/<id>/status.md", "content": "the whole new text"}]}
 ```
 - "asked": true only when the person asked for this change; otherwise the bot offers it with Sí
-  and No, and nothing happens without a Sí.
+  and No, and nothing happens without a Sí. A change to settings.yaml is always offered that way.
 - Always the person's own folder, people/<id>/, never invented facts: write only what was said or
   what a document shows. Lab values and documents go through the record block, never here.
 - Prefer "old"/"new" for a small change ("old" must appear exactly once); "content" replaces the
