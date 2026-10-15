@@ -74,7 +74,6 @@ TEXT_MAX = 4096  # Telegram's limit on one message, in UTF-16 code units
 FILE_MAX = 20 * 1024 * 1024  # the largest file the Bot API lets a bot download
 TURN_FILES_MAX = 25 * 1024 * 1024  # the photos and files one turn carries at most
 ECHO_MAX = 4000  # the «🎤» echo of a transcript is cut to this, in UTF-16 code units
-FILE_MIMES = ("application/pdf", "image/jpeg", "image/png", "image/heic", "image/heif")
 ADMIN_STATUSES = frozenset({"administrator", "creator"})
 ANONYMOUS_ADMIN = 1087968824  # Telegram's GroupAnonymousBot: an admin writing as the group
 NOT_MODIFIED = "message is not modified"
@@ -701,10 +700,10 @@ class Bot:
         log.info("voice queued")
 
     def on_file(self, msg: Mapping) -> None:
-        """A photo or a file (PDF, JPEG, PNG, HEIC) from a person. In the group it is for the
-        bot like a voice note: a lab sheet dropped in the doctor's group is meant for it. Its
-        caption is the message. It is queued as a line naming the file; the bytes are fetched
-        when the turn starts."""
+        """A photo or a file of any kind from a person. In the group it is for the bot like a
+        voice note: a lab sheet dropped in the doctor's group is meant for it. Its caption is the
+        message. It is queued as a line naming the file, with its own name and extension; the
+        bytes are fetched when the turn starts, and the assistant says when it cannot read one."""
         chat = msg["chat"]
         p = self.person((msg.get("from") or {}).get("id"))
         if p is None:
@@ -721,18 +720,13 @@ class Bot:
             name, mime, label = f"inbox/{mid}-foto.jpg", "image/jpeg", "foto"
         else:
             doc = msg["document"]
-            mime = str(doc.get("mime_type") or "").lower()
-            if mime not in FILE_MIMES or not doc.get("file_id"):
-                self.post(
-                    chat["id"], self.t("file_kind"), thread=line["thread"], reply_parameters=note
-                )
-                log.info("file refused: kind")
+            if not doc.get("file_id"):
                 return
+            mime = str(doc.get("mime_type") or "application/octet-stream").lower()
             media = {"file_id": doc["file_id"], "file_size": doc.get("file_size")}
-            fallback = "documento" + records.DOC_EXTS.get(mime, "")
             name = f"inbox/{mid}-{_safe_name(str(doc.get('file_name') or ''), 'documento')}"
             if "." not in name.rsplit("/", 1)[-1]:
-                name = f"inbox/{mid}-{fallback}"
+                name += records.DOC_EXTS.get(mime, "")
             label = "archivo"
         size = media.get("file_size")
         if isinstance(size, int) and size > FILE_MAX:

@@ -983,9 +983,7 @@ def _documents(block, attachments, out: Applied, base: str, read) -> dict[str, s
     paths: dict[str, str] = {}
     for name, (d, title) in titles.items():
         att = attachments[name]
-        ext = Path(name).suffix.lower() or DOC_EXTS.get(att.mime, "")
-        if ext not in (".pdf", ".jpg", ".jpeg", ".png", ".heic"):
-            raise BlockError("bad_document_kind")
+        ext = Path(name).suffix.lower() or DOC_EXTS.get(att.mime, "")  # any kind keeps its own
         stem = f"{d.isoformat()}-{slug(title)}"
         path, n = f"{base}/{DOCUMENTS}/{stem}{ext}", 2
         while True:

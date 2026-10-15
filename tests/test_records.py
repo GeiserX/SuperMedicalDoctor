@@ -423,6 +423,19 @@ def test_a_different_file_with_the_same_name_gets_its_own_path(data):
     assert list(applied.files) == ["people/lucia/documents/2027-03-09-a-2.pdf"]
 
 
+def test_a_file_of_any_kind_is_filed_with_its_own_extension(data):
+    att = Attachment("inbox/9-informe.docx", "application/octet-stream", b"PK", "lucia")
+    applied = apply(
+        data,
+        {
+            "person": "lucia",
+            "documents": [{"file": att.name, "date": "2027-03-09", "title": "Informe de alta"}],
+        },
+        atts={att.name: att},
+    )
+    assert applied.files == {"people/lucia/documents/2027-03-09-informe-de-alta.docx": b"PK"}
+
+
 # --- profile -------------------------------------------------------------------------------
 
 

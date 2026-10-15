@@ -11,7 +11,7 @@ people/<person>/profile.yaml          allergies, intolerances, conditions, diet,
 people/<person>/meds.yaml             medicines and supplements, stopped ones kept
 people/<person>/appointments.yaml     appointments with their preparation
 people/<person>/labs.jsonl            one lab value per line
-people/<person>/documents/            the original PDFs and photos
+people/<person>/documents/            the original files, each with its own extension
 export/chef.yaml                      generated for a meal planner; never edited by hand
 plugins/<file>.py                     the assistant plugin
 state/                                git-ignored: smd.sqlite and the source cache
