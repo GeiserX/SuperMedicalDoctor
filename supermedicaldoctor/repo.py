@@ -343,7 +343,8 @@ class Repo:
             return None
 
     def is_checkout(self) -> bool:
-        return (self.data / ".git").exists()
+        """The data directory is a checkout, or a folder inside one."""
+        return any((d / ".git").exists() for d in (self.data, *self.data.absolute().parents))
 
     def head(self) -> str | None:
         r = self._git("rev-parse", "--short", "HEAD")
@@ -491,8 +492,8 @@ class Repo:
             return new
 
     def changed_by(self, sha: str) -> list[str]:
-        """The paths a commit touched."""
-        out = self._run("show", "--name-only", "--format=", sha, code="show_failed")
+        """The paths a commit touched, relative to the data directory."""
+        out = self._run("show", "--name-only", "--relative", "--format=", sha, code="show_failed")
         return [x for x in out.splitlines() if x.strip()]
 
     def subject(self, sha: str) -> str | None:
@@ -512,7 +513,8 @@ class Repo:
             generated = set(regen())
             r = self._git("revert", "--no-commit", sha)
             if r.returncode != 0:
-                conflicts = self._git("diff", "--name-only", "--diff-filter=U").stdout.split()
+                conflicts = self._git("diff", "--name-only", "--relative", "--diff-filter=U")
+                conflicts = conflicts.stdout.split()
                 if not conflicts or any(c not in generated for c in conflicts):
                     self._git("revert", "--abort")
                     self._git("reset", "--quiet", "--merge")

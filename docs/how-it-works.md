@@ -172,7 +172,7 @@ From each pending appointment, with no AI, each once:
 
 | variable | what |
 |---|---|
-| `SMD_DATA` | the data directory, default `/data` |
+| `SMD_DATA` | the data directory, default `/data`: a checkout, or a folder inside one (mount the whole checkout) |
 | `TELEGRAM_BOT_TOKEN` | the bot token |
 | `SMD_GIT_TOKEN` | pulls and pushes the data repository; also any source whose `token_env` names it |
 | any other `token_env` | read tokens for sources |
