@@ -1,9 +1,10 @@
 # Data format
 
 SuperMedicalDoctor runs from a data directory: a git checkout of the household's private data
-repository, or a folder inside one, mounted at `/data` (`SMD_DATA`) and owned by uid 1000. The app reads it before every
-turn and commits every change it makes. Everything below uses fictional people, `lucia` and
-`pablo`.
+repository, mounted at `/data` (`SMD_DATA`) and owned by uid 1000. The data may also be a folder
+inside a bigger checkout: mount the whole checkout, `.git` included, and point `SMD_DATA` at the
+folder. The app reads it before every turn and commits every change it makes. Everything below
+uses fictional people, `lucia` and `pablo`.
 
 ```
 settings.yaml                         the bot's settings; people edit it, the bot edits two keys
