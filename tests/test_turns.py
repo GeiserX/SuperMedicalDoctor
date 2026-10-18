@@ -420,13 +420,27 @@ def test_a_short_wait_still_waits_a_minute(make_bot):
     assert len(plugin(bot).CALLS) == 1
 
 
-def test_an_error_without_a_wait_is_a_failed_turn(make_bot):
+@pytest.mark.parametrize("later", [True, 0, -5, float("inf"), float("nan"), "60"])
+def test_an_error_without_a_usable_wait_is_a_failed_turn(make_bot, later):
     bot = make_bot()
     e = RuntimeError("down")
-    e.retry_after = True  # not a number of seconds
+    e.retry_after = later
     plugin(bot).REPLIES[:] = [e]
     say(bot, "uno", mention=True)
     assert bot.tg.texts()[-1] == bot.t("ai_down")
+
+
+def test_a_notice_telegram_refused_is_sent_on_the_next_failure(make_bot):
+    bot = make_bot()
+    now = _clocked(bot)
+    bot.tg.fail_next("sendMessage", 500, "Internal Server Error")
+    plugin(bot).REPLIES[:] = [NoCapacity(600), NoCapacity(600)]
+    say(bot, "uno", mention=True)
+    now[0] += 600
+    bot.wake_rested()
+    bot.join_idle()
+    told = bot.t("ai_busy", wait=bot.t("busy_minutes", n=10))
+    assert bot.tg.texts().count(told) == 2  # the refused one, then the one that went out
 
 
 # --- forum topics --------------------------------------------------------------------------

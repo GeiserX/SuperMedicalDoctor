@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import html
 import logging
+import math
 import re
 import secrets
 import tempfile
@@ -220,7 +221,9 @@ def _mid(line: Mapping) -> int | None:
 def _retry_after(e: BaseException) -> float | None:
     """The seconds a plugin out of capacity asks to wait (its error's `retry_after`), or None."""
     later = getattr(e, "retry_after", None)
-    if isinstance(later, bool) or not isinstance(later, (int, float)) or later <= 0:
+    if isinstance(later, bool) or not isinstance(later, (int, float)):
+        return None
+    if not math.isfinite(later) or later <= 0:
         return None
     return float(later)
 
@@ -1561,7 +1564,6 @@ class Bot:
         with self._q:
             self._resting[chat] = self.clock() + seconds
             told = chat in self._told_busy
-            self._told_busy.add(chat)
         log.info("ai out of capacity: lines wait %ds", round(seconds))
         if told:
             return
@@ -1571,7 +1573,9 @@ class Bot:
             if minutes < 90
             else self.t("busy_hours", n=round(minutes / 60))
         )
-        self.post(chat, self.t("ai_busy", wait=wait), thread=thread)
+        if self.post(chat, self.t("ai_busy", wait=wait), thread=thread) is not None:
+            with self._q:  # a notice Telegram refused is tried again on the next failure
+                self._told_busy.add(chat)
 
     def wake_rested(self) -> None:
         """Queue every chat whose wait for capacity is over."""
