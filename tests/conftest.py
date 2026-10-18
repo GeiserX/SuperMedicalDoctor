@@ -207,6 +207,29 @@ def data_repo(_data_repo_template, tmp_path, monkeypatch) -> DataRepo:
     return DataRepo(remote=root / "remote.git", data=root / "data", human=root / "human")
 
 
+@pytest.fixture
+def subfolder_repo(tmp_path, monkeypatch) -> DataRepo:
+    """The data in a folder of a bigger checkout, `doctor/`, next to `tracker/`, which another
+    bot writes from its own clone (`human` here is that clone's root)."""
+    for key, value in ISOLATED.items():
+        monkeypatch.setenv(key, value)
+    root = tmp_path / "repos"
+    root.mkdir()
+    remote, seed = root / "remote.git", root / "seed"
+    git(root, "init", "--quiet", "--bare", "-b", "main", str(remote))
+    git(root, "init", "--quiet", "-b", "main", str(seed))
+    (seed / "doctor").mkdir()
+    write_seed(seed / "doctor")
+    (seed / "tracker").mkdir()
+    (seed / "tracker" / "log.txt").write_text("one\n", encoding="utf-8")
+    git(seed, "add", ".")
+    git(seed, "commit", "--quiet", "-m", "seed")
+    git(seed, "push", "--quiet", str(remote), "main")
+    for name in ("bot", "other"):
+        git(root, "clone", "--quiet", "remote.git", name)
+    return DataRepo(remote=remote, data=root / "bot" / "doctor", human=root / "other")
+
+
 class FakeTelegram:
     """Stands in for `Telegram`: records every call, hands out increasing message ids, and
     raises a scripted `TelegramError` on demand. `files` maps a `file_id` to the bytes `getFile`

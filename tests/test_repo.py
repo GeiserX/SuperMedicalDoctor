@@ -132,6 +132,71 @@ def test_the_token_never_reaches_git_config_or_a_url(data_repo):
     assert "secret-token-value" not in config
 
 
+# --- the data in a folder of a bigger checkout ------------------------------------------------
+
+
+def other_bot_writes(dr, text):
+    """The other bot, in its own clone, commits to its own folder and pushes."""
+    git(dr.human, "pull", "--quiet", "--rebase")
+    (dr.human / "tracker" / "log.txt").write_text(text, encoding="utf-8")
+    git(dr.human, "commit", "--quiet", "-am", "tracker: log")
+    git(dr.human, "push", "--quiet")
+
+
+def test_a_data_folder_pulls_and_rebases_its_commit_on_the_other_folders_push(subfolder_repo):
+    dr, clock = subfolder_repo, [0.0]
+    repo = Repo(dr.data, clock=lambda: clock[0])
+    assert repo.is_checkout()
+    other_bot_writes(dr, "two\n")
+    assert repo.pull()
+    assert (dr.data.parent / "tracker" / "log.txt").read_text() == "two\n"
+    other_bot_writes(dr, "three\n")
+    clock[0] = 5.0  # the pull is fresh: the push itself has to rebase
+    sha = repo.commit({"people/lucia/notes.md": "y\n"}, "log(lucia): note")
+    assert git(dr.remote, "log", "--format=%s", "main").splitlines()[:2] == [
+        "log(lucia): note",
+        "tracker: log",
+    ]
+    assert dr.remote_file("doctor/people/lucia/notes.md") == "y\n"
+    assert dr.remote_file("tracker/log.txt") == "three\n"
+    assert repo.unpushed() == 0
+    assert repo.changed_by(sha) == ["people/lucia/notes.md"]
+    assert repo.flush() == "idle"
+
+
+def test_a_data_folder_reverts_a_record_and_regenerates_the_exports(subfolder_repo):
+    dr = subfolder_repo
+    repo = Repo(dr.data)
+    sha = repo.commit(
+        {"people/lucia/notes.md": "a\n", "export/chef.yaml": "one\n"}, "log(lucia): a"
+    )
+    repo.commit({"export/chef.yaml": "two\n"}, "export: chef")  # a later change to the export
+    other_bot_writes(dr, "two\n")
+
+    def regen():
+        exists = (dr.data / "people/lucia/notes.md").exists()
+        return {"export/chef.yaml": "with note\n" if exists else "without note\n"}
+
+    assert repo.revert(sha, regen, "undo(lucia): revert")
+    assert not (dr.data / "people/lucia/notes.md").exists()
+    assert dr.remote_file("doctor/export/chef.yaml") == "without note\n"
+    assert dr.remote_file("tracker/log.txt") == "two\n"
+    assert git(dr.remote, "log", "-1", "--format=%s", "main").strip() == "undo(lucia): revert"
+    assert git(dr.data, "status", "--porcelain") == ""
+
+
+def test_a_data_folder_refuses_an_undo_a_later_commit_conflicts_with(subfolder_repo):
+    dr = subfolder_repo
+    repo = Repo(dr.data)
+    sha = repo.commit({"people/lucia/notes.md": "a\n"}, "log(lucia): a")
+    other_bot_writes(dr, "two\n")
+    repo.commit({"people/lucia/notes.md": "b\n"}, "log(lucia): b")
+    with pytest.raises(GitError, match="undo_conflict"):
+        repo.revert(sha, dict, "undo(lucia): revert")
+    assert git(dr.data, "status", "--porcelain") == ""
+    assert (dr.data / "people/lucia/notes.md").read_text() == "b\n"
+
+
 def test_kv_refuses_unknown_keys(tmp_path):
     kv = KV(tmp_path / "s.sqlite")
     with pytest.raises(ValueError, match="unknown_kv_key"):
