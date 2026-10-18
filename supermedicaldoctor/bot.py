@@ -105,6 +105,9 @@ BACKOFF_MIN_S, BACKOFF_MAX_S = 5, 300  # 5xx and network failures
 MENU = ("citas", "medicacion", "suplementos", "recordatorios", "deshacer", "ayuda")
 DEBOUNCE_S = 2.5  # a chat's turn starts this long after its newest message: a burst goes together
 VOICE_WAIT_S = 30  # and waits this long at most, from a note's arrival, for a note being heard
+# A plugin out of capacity raises an error with `retry_after` (seconds): the chat's lines wait
+# that long, at least BUSY_MIN_S, and go to the assistant then, with nobody writing again.
+BUSY_MIN_S = 60
 SAID_MAX = 30  # answered messages kept per chat, so an edit of one can be compared with it
 ANSWER_CLIP = 1500  # characters of the earlier answer that an edit of an answered message carries
 OPTIONS_TTL_S = 12 * 3600  # a choice under an answer can be tapped this long
@@ -212,6 +215,14 @@ def _mid(line: Mapping) -> int | None:
     if "mid" in line:
         return line["mid"]
     return line["id"] if isinstance(line.get("id"), int) else None
+
+
+def _retry_after(e: BaseException) -> float | None:
+    """The seconds a plugin out of capacity asks to wait (its error's `retry_after`), or None."""
+    later = getattr(e, "retry_after", None)
+    if isinstance(later, bool) or not isinstance(later, (int, float)) or later <= 0:
+        return None
+    return float(later)
 
 
 def _users(lines: Sequence[Mapping]) -> list[int]:
@@ -323,6 +334,8 @@ class Bot:
         self._newest: dict[int, float] = {}
         self._voicing: dict[int, dict] = {}
         self._running: dict[int, Turn] = {}
+        self._resting: dict[int, float] = {}  # chat -> clock() its lines wait for (no capacity)
+        self._told_busy: set[int] = set()  # chats told of the wait, until an answer goes out
         self.asks: dict[str, dict] = {}
         self.hearer = Worker(self._hear_chat, name="smd-hear")
         self.side = Worker(lambda job: job(), name="smd-asks")
@@ -1093,6 +1106,7 @@ class Bot:
             (lambda: self.repo.pull(PULL_EVERY_S), "git pull"),
             (self.repo.flush, "git sync"),
             (self.reload_if_pulled, "settings reload"),
+            (self.wake_rested, "busy wake"),
             (lambda: self.tick_appointments(now), "appointment reminders"),
             (self.tick_reminders, "reminder tick"),
             (self.expire_asks, "ask expiry"),
@@ -1308,6 +1322,8 @@ class Bot:
 
     def _turn(self, chat: int) -> None:
         key = f"pending:{chat}"
+        if self._resting.get(chat, 0) > self.clock():
+            return  # no capacity: wake_rested queues the chat when the wait is over
         self.settle(chat)
         if not self.has_assistant:
             return
@@ -1462,6 +1478,10 @@ class Bot:
             )
         except Exception as e:  # noqa: BLE001 - the plugin may raise anything
             log.warning("ai turn failed: %s", safe(e))
+            later = _retry_after(e)
+            if later is not None:  # out of capacity: the lines stay and go again by themselves
+                self.rest(chat, later, state.thread)
+                return
             self.post(chat, self.t("ai_down"), thread=state.thread)
             return
         finally:
@@ -1472,6 +1492,7 @@ class Bot:
             self.post(chat, self.t("ai_down"), thread=state.thread)
             return
         log.info("ai turn ok %ds", round(time.monotonic() - started))
+        self._told_busy.discard(chat)  # answered: a later busy spell is told again
         self.last_ai = self.now()
         with self._conv_lock:
             if self._resets[chat] != resets:
@@ -1532,6 +1553,35 @@ class Bot:
             thread = state.thread
             self.later.submit(lambda: self.run_later(chat, job, thread))
             log.info("later queued")
+
+    def rest(self, chat: int, seconds: float, thread: int | None) -> None:
+        """The assistant is out of capacity for `seconds`: say so once, with the wait, and send
+        the chat's pending lines when it is back. A line that arrives meanwhile waits too."""
+        seconds = max(float(seconds), BUSY_MIN_S)
+        with self._q:
+            self._resting[chat] = self.clock() + seconds
+            told = chat in self._told_busy
+            self._told_busy.add(chat)
+        log.info("ai out of capacity: lines wait %ds", round(seconds))
+        if told:
+            return
+        minutes = max(1, round(seconds / 60))
+        wait = (
+            self.t("busy_minutes", n=minutes)
+            if minutes < 90
+            else self.t("busy_hours", n=round(minutes / 60))
+        )
+        self.post(chat, self.t("ai_busy", wait=wait), thread=thread)
+
+    def wake_rested(self) -> None:
+        """Queue every chat whose wait for capacity is over."""
+        now = self.clock()
+        with self._q:
+            due = [chat for chat, until in self._resting.items() if until <= now]
+            for chat in due:
+                del self._resting[chat]
+        for chat in due:
+            self.worker.submit(chat)
 
     def _incoming(self, state: Turn, key: str) -> Callable[[], list[dict]]:
         """`turn["incoming"]`: the chat's text lines queued since the turn started and not
