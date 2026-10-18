@@ -3,6 +3,9 @@
 # --- texto libre, notas de voz, fotos y archivos -------------------------------------------
 no_ai: "Ahora mismo no puedo leer mensajes escritos; en cuanto pueda, lo leo."
 ai_down: "Ahora mismo no puedo leer mensajes escritos. Lo que me has escrito sigue aquí y va con tu próximo mensaje."
+ai_busy: "Ahora mismo no puedo contestar: no me queda capacidad hasta dentro de {wait}. Entonces contesto a todo, sin que haga falta repetir nada."
+busy_minutes: "unos {n} minutos"
+busy_hours: "unas {n} horas"
 voice_echo: "🎤 {text}"
 voice_off: "Ahora mismo no puedo escuchar notas de voz. ¿Me lo escribes?"
 voice_failed: "No he entendido la nota de voz. ¿Me lo escribes?"

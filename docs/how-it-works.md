@@ -71,7 +71,9 @@ user id, username and calendar) and `chat_id`.
 
 The return value is a string or `{"text", "conversation", "kept", "covers", "options",
 "reminders", "later"}`. `kept: false` (or an exception, or the timeout) is a failed turn: nothing is
-applied and the lines go with the next one. `later` is a callable the app runs on its own thread
+applied and the lines go with the next one. An exception with a numeric `retry_after`
+(seconds) means the provider is out of capacity: the chat hears the wait once, and the lines, with
+any that arrive meanwhile, go to the assistant by themselves when it is over. `later` is a callable the app runs on its own thread
 after posting the text; its string is posted too.
 
 ### Blocks in the answer

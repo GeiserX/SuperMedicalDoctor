@@ -9,6 +9,9 @@ validates and applies them. A plugin may also turn a voice note into text (`tran
 person to approve an action (`answer`, through `turn["ask"]`) and hand back slow work to finish
 after its answer is posted (`later`).
 
+A plugin that is out of capacity raises an error with a `retry_after` attribute (seconds): the
+app tells the chat the wait once and sends the waiting lines again by itself when it is over.
+
 Nothing here logs: errors are `PluginError` reason codes, and a plugin's own exception goes up to
 the caller, which logs its class only (`telegram.safe`).
 """

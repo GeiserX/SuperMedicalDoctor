@@ -3,6 +3,9 @@
 # --- free text, voice notes, photos and files ----------------------------------------------
 no_ai: "Right now I cannot read written messages; as soon as I can, I will read it."
 ai_down: "Right now I cannot read written messages. What you wrote stays here and goes with your next message."
+ai_busy: "Right now I cannot answer: I have no capacity left for {wait}. Then I answer everything, with no need to repeat anything."
+busy_minutes: "about {n} minutes"
+busy_hours: "about {n} hours"
 voice_echo: "🎤 {text}"
 voice_off: "Right now I cannot listen to voice notes. Can you write it to me?"
 voice_failed: "I could not make out the voice note. Can you write it to me?"

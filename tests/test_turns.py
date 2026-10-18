@@ -345,6 +345,104 @@ def test_a_failed_turn_keeps_the_lines_for_the_next(make_bot):
     assert contents(plugin(bot).CALLS[-1])[-2:] == ["Lucía: uno", "Lucía: dos"]
 
 
+class NoCapacity(RuntimeError):
+    def __init__(self, seconds):
+        super().__init__("no capacity")
+        self.retry_after = seconds
+
+
+def _clocked(bot):
+    now = [1000.0]
+    bot.clock = lambda: now[0]
+    return now
+
+
+def test_no_capacity_is_told_once_and_the_lines_are_answered_when_it_is_back(make_bot):
+    bot = make_bot()
+    now = _clocked(bot)
+    plugin(bot).REPLIES[:] = [NoCapacity(3960)]
+    say(bot, "uno", mention=True)
+    told = bot.t("ai_busy", wait=bot.t("busy_minutes", n=66))
+    assert bot.tg.texts() == [told]
+    asked = len(plugin(bot).CALLS)
+    say(bot, "dos", mention=True)
+    assert len(plugin(bot).CALLS) == asked  # it waits: no call while there is no capacity
+    assert bot.tg.texts() == [told]  # told once
+    assert len(bot.kv.get_json(f"pending:{GROUP}")) == 2  # a restart still answers them
+    now[0] += 3959
+    bot.wake_rested()
+    bot.join_idle()
+    assert len(plugin(bot).CALLS) == asked
+    now[0] += 1
+    bot.wake_rested()
+    bot.join_idle()
+    assert contents(plugin(bot).CALLS[-1])[-2:] == ["Lucía: uno", "Lucía: dos"]
+    assert bot.tg.texts() == [told, "Vale."]
+    assert bot.kv.get_json(f"pending:{GROUP}") is None
+
+
+def test_no_capacity_again_after_the_wait_is_not_told_twice(make_bot):
+    bot = make_bot()
+    now = _clocked(bot)
+    plugin(bot).REPLIES[:] = [NoCapacity(600), NoCapacity(600)]
+    say(bot, "uno", mention=True)
+    now[0] += 600
+    bot.wake_rested()
+    bot.join_idle()
+    assert len(plugin(bot).CALLS) == 2
+    assert bot.tg.texts() == [bot.t("ai_busy", wait=bot.t("busy_minutes", n=10))]
+    now[0] += 600
+    bot.wake_rested()
+    bot.join_idle()
+    assert bot.tg.texts()[-1] == "Vale."
+    plugin(bot).REPLIES[:] = [NoCapacity(600)]
+    say(bot, "otra", mention=True)  # a new busy spell after an answer is told again
+    assert bot.tg.texts()[-1] == bot.t("ai_busy", wait=bot.t("busy_minutes", n=10))
+
+
+def test_a_wait_of_hours_says_hours(make_bot):
+    bot = make_bot()
+    _clocked(bot)
+    plugin(bot).REPLIES[:] = [NoCapacity(3 * 3600)]
+    say(bot, "uno", mention=True)
+    assert bot.tg.texts()[-1] == bot.t("ai_busy", wait=bot.t("busy_hours", n=3))
+
+
+def test_a_short_wait_still_waits_a_minute(make_bot):
+    bot = make_bot()
+    now = _clocked(bot)
+    plugin(bot).REPLIES[:] = [NoCapacity(5)]
+    say(bot, "uno", mention=True)
+    assert bot.tg.texts()[-1] == bot.t("ai_busy", wait=bot.t("busy_minutes", n=1))
+    now[0] += 59
+    bot.wake_rested()
+    bot.join_idle()
+    assert len(plugin(bot).CALLS) == 1
+
+
+@pytest.mark.parametrize("later", [True, 0, -5, float("inf"), float("nan"), "60"])
+def test_an_error_without_a_usable_wait_is_a_failed_turn(make_bot, later):
+    bot = make_bot()
+    e = RuntimeError("down")
+    e.retry_after = later
+    plugin(bot).REPLIES[:] = [e]
+    say(bot, "uno", mention=True)
+    assert bot.tg.texts()[-1] == bot.t("ai_down")
+
+
+def test_a_notice_telegram_refused_is_sent_on_the_next_failure(make_bot):
+    bot = make_bot()
+    now = _clocked(bot)
+    bot.tg.fail_next("sendMessage", 500, "Internal Server Error")
+    plugin(bot).REPLIES[:] = [NoCapacity(600), NoCapacity(600)]
+    say(bot, "uno", mention=True)
+    now[0] += 600
+    bot.wake_rested()
+    bot.join_idle()
+    told = bot.t("ai_busy", wait=bot.t("busy_minutes", n=10))
+    assert bot.tg.texts().count(told) == 2  # the refused one, then the one that went out
+
+
 # --- forum topics --------------------------------------------------------------------------
 
 
