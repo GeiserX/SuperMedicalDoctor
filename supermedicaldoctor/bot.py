@@ -391,10 +391,15 @@ class Bot:
             text = self.t("new_version", version=__version__)
         told = missed = 0
         for uid in self.admin_uids():
-            if self.post(uid, text) is not None:
+            try:
+                self.send(uid, text)
                 told += 1
-            else:
+            except TelegramError as e:
                 missed += 1
+                if e.code == 403:  # never opened a private chat with the bot: the group is told
+                    log.info("version not sent in private to an admin: %s", safe(e))
+                else:
+                    log.warning("send failed: %s", safe(e))
         if (missed or not told) and self.settings.chat is not None:
             told += self.post(self.settings.chat, text) is not None
         if told:

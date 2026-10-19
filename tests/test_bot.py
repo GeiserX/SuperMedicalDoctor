@@ -731,6 +731,26 @@ def test_an_admin_out_of_reach_in_private_is_told_in_the_group(make_bot):
     assert bot.kv.get("version") == __version__
 
 
+def test_an_admin_out_of_reach_in_private_is_no_warning_but_a_failed_send_is(make_bot, caplog):
+    import logging
+
+    bot = make_bot()
+    bot.tg.fail_next("sendMessage", 403, "Forbidden: bot can't initiate conversation with a user")
+    with caplog.at_level(logging.INFO, logger="smd.bot"):
+        bot.announce_version()
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert any("not sent in private" in r.getMessage() for r in caplog.records)
+
+    caplog.clear()
+    bot.kv.set("version", "0.0.1")
+    bot.tg.fail_next("sendMessage", 502, "Bad Gateway")
+    with caplog.at_level(logging.INFO, logger="smd.bot"):
+        bot.announce_version()
+    assert [r.levelno for r in caplog.records if "send failed" in r.getMessage()] == [
+        logging.WARNING
+    ]
+
+
 def test_a_failed_send_keeps_nothing_and_the_next_start_tries_again(make_bot):
     from supermedicaldoctor import __version__
 
