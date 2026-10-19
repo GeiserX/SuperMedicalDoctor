@@ -686,3 +686,60 @@ def test_si_refuses_when_the_instructions_move_between_the_check_and_the_write(m
     tap(bot, buttons(ask)[0][1], user=PABLO)
     assert bot.tg.texts()[-1].startswith("Mis instrucciones han cambiado desde que lo pregunté")
     assert "Regla 3, revisada." in instructions_on(data_repo)
+
+
+# --- the version announcement --------------------------------------------------------------
+
+
+def test_the_first_start_tells_each_admin_in_private_and_keeps_the_version(make_bot):
+    from supermedicaldoctor import __version__
+
+    bot = make_bot()
+    bot.announce_version()
+    assert [(p["chat_id"], p["text"]) for p in sent(bot)] == [
+        (PABLO, f"Nueva versión en marcha: {__version__}.")
+    ]
+    assert bot.kv.get("version") == __version__
+
+
+def test_a_restart_on_the_same_version_says_nothing(make_bot):
+    from supermedicaldoctor import __version__
+
+    bot = make_bot()
+    bot.kv.set("version", __version__)
+    bot.announce_version()
+    assert sent(bot) == []
+
+
+def test_a_new_version_names_the_one_before(make_bot):
+    from supermedicaldoctor import __version__
+
+    bot = make_bot()
+    bot.kv.set("version", "0.0.1")
+    bot.announce_version()
+    assert bot.tg.texts() == [f"Nueva versión en marcha: {__version__} (antes 0.0.1)."]
+    assert bot.kv.get("version") == __version__
+
+
+def test_an_admin_out_of_reach_in_private_is_told_in_the_group(make_bot):
+    from supermedicaldoctor import __version__
+
+    bot = make_bot()
+    bot.tg.fail_next("sendMessage", 403, "Forbidden: bot can't initiate conversation with a user")
+    bot.announce_version()
+    assert [p["chat_id"] for p in sent(bot)] == [PABLO, GROUP]  # the private try, then the group
+    assert bot.kv.get("version") == __version__
+
+
+def test_a_failed_send_keeps_nothing_and_the_next_start_tries_again(make_bot):
+    from supermedicaldoctor import __version__
+
+    bot = make_bot()
+    bot.tg.fail_next("sendMessage", 403, "Forbidden: bot can't initiate conversation with a user")
+    bot.tg.fail_next("sendMessage", 502, "Bad Gateway")
+    bot.announce_version()
+    assert [p["chat_id"] for p in sent(bot)] == [PABLO, GROUP]  # both refused
+    assert bot.kv.get("version") is None
+    bot.announce_version()
+    assert [p["chat_id"] for p in sent(bot)][2:] == [PABLO]
+    assert bot.kv.get("version") == __version__

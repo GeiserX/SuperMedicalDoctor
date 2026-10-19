@@ -112,6 +112,8 @@ help_admin: |-
   /nuevo: empezar una conversación nueva con el asistente
   /presentacion: publicar la presentación
 intro: "Hola, soy el asistente médico de la casa. Llevo vuestras citas, vuestra medicación y vuestros suplementos, leo los análisis que me mandéis y busco lo que me preguntéis en fuentes médicas, diciendo de dónde sale y cuánta evidencia hay. Os recuerdo las citas y lo que haya que preparar. Lo de cada uno es suyo: en el grupo solo hablo de lo que cada uno saque aquí."
+new_version: "Nueva versión en marcha: {version}."
+new_version_from: "Nueva versión en marcha: {version} (antes {previous})."
 
 # --- botones bajo una respuesta, y acciones que el asistente quiere hacer -----------------
 button_yes: "Sí"
