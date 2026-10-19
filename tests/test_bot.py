@@ -743,6 +743,15 @@ def test_an_admin_out_of_reach_in_private_is_no_warning_but_a_failed_send_is(mak
 
     caplog.clear()
     bot.kv.set("version", "0.0.1")
+    bot.tg.fail_next("sendMessage", 403, "Forbidden: bot was blocked by the user")
+    with caplog.at_level(logging.INFO, logger="smd.bot"):
+        bot.announce_version()
+    assert [r.levelno for r in caplog.records if "send failed" in r.getMessage()] == [
+        logging.WARNING
+    ]
+
+    caplog.clear()
+    bot.kv.set("version", "0.0.1")
     bot.tg.fail_next("sendMessage", 502, "Bad Gateway")
     with caplog.at_level(logging.INFO, logger="smd.bot"):
         bot.announce_version()

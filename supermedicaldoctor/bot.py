@@ -396,7 +396,8 @@ class Bot:
                 told += 1
             except TelegramError as e:
                 missed += 1
-                if e.code == 403:  # never opened a private chat with the bot: the group is told
+                if e.code == 403 and "can't initiate conversation" in e.description:
+                    # never opened a private chat with the bot: the group is told
                     log.info("version not sent in private to an admin: %s", safe(e))
                 else:
                     log.warning("send failed: %s", safe(e))
