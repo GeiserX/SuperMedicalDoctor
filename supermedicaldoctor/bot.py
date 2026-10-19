@@ -42,7 +42,7 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-from supermedicaldoctor import assistant, edits, export, records, schedule
+from supermedicaldoctor import __version__, assistant, edits, export, records, schedule
 from supermedicaldoctor.i18n import Translator
 from supermedicaldoctor.records import (
     SETTINGS_FILE,
@@ -376,6 +376,30 @@ class Bot:
                 self.tg.call("setMyCommands", commands=commands, language_code=language)
             except TelegramError as e:
                 log.warning("setMyCommands failed: %s", safe(e))
+
+    def announce_version(self) -> None:
+        """Tell the admins, each in private, that a new version runs; an admin out of reach
+        privately is told in the group. The version is kept only once Telegram took a message,
+        so a failed send is tried again on the next start. A restart on the same version says
+        nothing."""
+        previous = self.kv.get("version")
+        if previous == __version__:
+            return
+        if previous:
+            text = self.t("new_version_from", version=__version__, previous=previous)
+        else:
+            text = self.t("new_version", version=__version__)
+        told = missed = 0
+        for uid in self.admin_uids():
+            if self.post(uid, text) is not None:
+                told += 1
+            else:
+                missed += 1
+        if (missed or not told) and self.settings.chat is not None:
+            told += self.post(self.settings.chat, text) is not None
+        if told:
+            self.kv.set("version", __version__)
+            log.info("new version %s announced", __version__)
 
     def close(self) -> None:
         self.hearer.stop()
@@ -1193,6 +1217,7 @@ class Bot:
                 log.warning("getMe failed: %s", safe(e))
                 self.wait(stop, delay, self.heartbeat)
                 delay = min(delay * 2, BACKOFF_MAX_S)
+        self.announce_version()
         self.repo.check_remote()
         self.repo.pull(0)
         self.reload_if_pulled()

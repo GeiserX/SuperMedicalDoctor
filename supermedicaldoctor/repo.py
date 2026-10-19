@@ -42,7 +42,7 @@ EXPORT_PREFIX = "export: "
 
 # --- SQLite kv -----------------------------------------------------------------------------
 
-KV_KEYS = frozenset({"offset"})
+KV_KEYS = frozenset({"offset", "version"})
 KV_PREFIXES = (
     "conv:",
     "pending:",

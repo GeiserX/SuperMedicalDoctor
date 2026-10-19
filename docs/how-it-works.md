@@ -147,6 +147,8 @@ From each pending appointment, with no AI, each once:
 
 `/cmd@bot` works. The menu is set at every start, in the default scope and for Spanish.
 
+The first start on a new version tells each admin in private «Nueva versión en marcha: 0.1.11 (antes 0.1.10).»; an admin the bot cannot reach in private is told in the group. The version is kept in the state only once Telegram took a message, so a failed send is tried again at the next start, and a restart on the same version says nothing.
+
 ## Edits, voice and the rest of the machinery
 
 - **Edits.** Still queued: the new wording goes. In the running turn: its open asks are declined

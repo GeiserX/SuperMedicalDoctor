@@ -112,6 +112,8 @@ help_admin: |-
   /nuevo: start a fresh conversation with the assistant
   /presentacion: post the introduction
 intro: "Hi, I am the household's doctor assistant. I keep your appointments, your medicines and your supplements, I read the lab results you send me and I look up what you ask in medical sources, saying where it comes from and how much evidence there is. I remind you of appointments and of what to prepare for them. What belongs to each of you is theirs: in the group I only talk about what each one raises here."
+new_version: "New version running: {version}."
+new_version_from: "New version running: {version} (was {previous})."
 
 # --- buttons under an answer, and actions the assistant wants to take ----------------------
 button_yes: "Yes"
