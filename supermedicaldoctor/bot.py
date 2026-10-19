@@ -1217,10 +1217,10 @@ class Bot:
                 log.warning("getMe failed: %s", safe(e))
                 self.wait(stop, delay, self.heartbeat)
                 delay = min(delay * 2, BACKOFF_MAX_S)
-        self.announce_version()
         self.repo.check_remote()
         self.repo.pull(0)
         self.reload_if_pulled()
+        self.announce_version()  # after the pull, to the admins the settings name now
         self.sync_export()
         self.set_commands()
         self.resume()
