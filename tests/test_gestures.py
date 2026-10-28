@@ -67,6 +67,20 @@ def test_answer_goes_as_html_and_a_refused_markup_as_plain_text(make_bot):
     assert "parse_mode" not in last_sent(bot)
 
 
+def test_a_long_answer_comes_out_short_with_the_detail_folded(make_bot):
+    bot = make_bot()
+    detail = "\n".join(f"- Estudio {i}: dosis, duración y resultado" for i in range(40))
+    plugin(bot).REPLIES[:] = [
+        "El hierro con zumo se absorbe mejor.\n\n" + detail + "\n\n¿Lo apunto?"
+    ]
+    say(bot, "hierro", mention=True)
+    [msg] = sent(bot)
+    shown, folded = msg["text"].split("<blockquote expandable>")
+    assert shown.strip() == "El hierro con zumo se absorbe mejor."
+    assert "Estudio 39" in folded
+    assert msg["reply_markup"] == {"force_reply": True, "selective": True}
+
+
 def test_a_reaction_alone_says_nothing(make_bot):
     bot = make_bot()
     plugin(bot).REPLIES[:] = ["```telegram\nreact: 👍\n```"]

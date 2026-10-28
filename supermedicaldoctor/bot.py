@@ -2969,6 +2969,8 @@ class Bot:
         saying they may answer in their own words; without, one that ends with a question
         carries a selective force_reply. False when a part could not be sent."""
         key = secrets.token_hex(4) if offered else None
+        asks = text.rstrip().endswith("?")
+        text = render.brief(text)  # a few lines, the rest folded: no page holds the detail here
         if offered:
             hint = self.t("yes_no_hint" if self.yes_no(offered) else "options_hint")
             text = f"{text}\n\n{hint}"
@@ -2978,7 +2980,7 @@ class Bot:
             markup = None
             if i == len(parts) - 1 and key:
                 markup = _keyboard([[(label, f"o:{key}:{n}")] for n, label in enumerate(offered)])
-            elif i == len(parts) - 1 and text.rstrip().endswith("?"):
+            elif i == len(parts) - 1 and asks:
                 markup = {"force_reply": True, "selective": True}
             parameters = None
             if reply_to and i == 0:
