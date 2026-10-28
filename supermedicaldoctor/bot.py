@@ -1495,7 +1495,7 @@ class Bot:
             rules = assistant.rules(
                 {pid: p.name for pid, p in s.people.items()}, s.language, instructions
             )
-            rules += "\n\n" + gestures.guide("en", s.style, bool(s.sticker_set), s.photos)
+            rules += "\n\n" + gestures.guide("en", s.style, bool(s.sticker_set), s.photo_hosts)
             turn = assistant.turn(
                 conversation,
                 rules,
@@ -1553,7 +1553,7 @@ class Bot:
         ]
         covered = [*lines, *handed]
         reply_to = _mid(covered[0]) if len(covered) == 1 else None
-        text, acts = gestures.extract(reply.text)
+        text, acts = gestures.extract(reply.text, s.photo_hosts, self.t("file_name"))
         text, blocks = assistant.extract(text)
         text, settings_blocks = assistant.extract(text, "settings")
         text, edit_blocks = assistant.extract(text, "edit")
@@ -3038,11 +3038,9 @@ class Bot:
                 shown = True
             except TelegramError as e:
                 log.warning("document failed: %s", safe(e))
-        sends = []
-        if self.settings.photos:
-            sends += [
-                ("sendPhoto", {"photo": p["url"], "caption": p["caption"]}) for p in acts["photos"]
-            ]
+        sends = [
+            ("sendPhoto", {"photo": p["url"], "caption": p["caption"]}) for p in acts["photos"]
+        ]
         sticker = self.sticker(acts["sticker"])
         if sticker:
             sends.append(("sendSticker", {"sticker": sticker}))

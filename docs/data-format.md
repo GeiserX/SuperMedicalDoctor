@@ -37,7 +37,9 @@ telegram:
   style: |                    # the bot's voice in the chat, read after the formatting rules
     Calm and clear. Few emojis, no stickers. Summary first, details folded.
   sticker_set: ""             # a Telegram sticker set answers may send from; empty: no stickers
-  photos: false               # true: answers may send an image from the web by its address
+  photo_hosts: []             # hosts answers may send an image from by its address; none: no photos.
+                              # Telegram fetches it with no tap: only hosts you trust, or a page the
+                              # assistant reads could send the chat's data to a server in the URL
 people:
   lucia: {name: Lucía, user_id: 111, username: lucia_tg, calendar: cal-lucia}
   pablo: {name: Pablo, user_id: 222, username: null, calendar: cal-pablo}

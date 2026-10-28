@@ -3,6 +3,7 @@
 # --- free text, voice notes, photos and files ----------------------------------------------
 no_ai: "Right now I cannot read written messages; as soon as I can, I will read it."
 ai_down: "Right now I cannot read written messages. What you wrote stays here and goes with your next message."
+file_name: "file"  # a file the assistant sends whose name has no letter left
 ai_busy: "Right now I cannot answer: I have no capacity left for {wait}. Then I answer everything, with no need to repeat anything."
 busy_minutes: "about {n} minutes"
 busy_hours: "about {n} hours"

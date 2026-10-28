@@ -101,6 +101,13 @@ def test_a_report_goes_as_a_file_and_a_refused_file_never_loses_the_text(make_bo
     assert last_sent(bot)["text"] == "Otra vez."
 
 
+def test_a_file_with_no_latin_letter_is_named_in_the_chats_language(make_bot):
+    bot = make_bot()
+    plugin(bot).REPLIES[:] = ["Toma.\n```document 日本.txt\nx\n```"]
+    say(bot, "hola", mention=True)
+    assert bot.tg.of("sendDocument")[0]["document"] == "archivo.txt"
+
+
 def test_stickers_and_photos_need_the_settings(make_bot):
     bot = make_bot()
     plugin(bot).REPLIES[:] = ["Hecho.\n```telegram\nsticker: 🎉\nphoto: https://a.org/p.jpg\n```"]
@@ -118,8 +125,10 @@ def test_the_formatting_guide_and_the_voice_reach_the_rules(make_bot):
 
 def test_the_voice_and_switches_come_from_settings():
     s = records.Settings.from_dict(
-        {"telegram": {"style": "Calmado y claro.", "sticker_set": "x", "photos": "yes"}}
+        {"telegram": {"style": "Calmado y claro.", "sticker_set": "x", "photo_hosts": "a.org"}}
     )
-    assert (s.style, s.sticker_set, s.photos) == ("Calmado y claro.", "x", False)
-    guide = gestures.guide("en", s.style, bool(s.sticker_set), s.photos)
+    assert (s.style, s.sticker_set, s.photo_hosts) == ("Calmado y claro.", "x", ())
+    s = records.Settings.from_dict({"telegram": {"photo_hosts": ["a.org", 3, ""]}})
+    assert s.photo_hosts == ("a.org",)
+    guide = gestures.guide("en", "Calmado y claro.", True, s.photo_hosts)
     assert guide.rstrip().endswith("Calmado y claro.") and "sticker: 🎉" in guide

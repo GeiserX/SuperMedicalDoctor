@@ -101,7 +101,8 @@ The app takes fenced blocks out of `text`; nobody sees them.
 - **`telegram`**: `react: <emoji>` puts one of Telegram's reactions on the message answered (an
   answer that is only a reaction sends no text; if the reaction fails, the emoji goes as a
   message), `sticker: <emoji>` sends that sticker of `telegram.sticker_set`, `photo: https://... |
-  caption` sends an image by its address when `telegram.photos` is true (three at most).
+  caption` sends an image by its address when its host is in `telegram.photo_hosts` (three at
+  most; Telegram fetches it with no tap, so only trusted hosts).
 - **`document`**: ````` ````document name.md | caption ````` sends its text as a file (.md, .txt,
   .csv, .json or .ics, 200 KB, three at most), for a report or anything meant to be kept.
 
