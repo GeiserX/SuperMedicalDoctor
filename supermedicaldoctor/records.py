@@ -174,6 +174,12 @@ class Settings:
     sources: tuple = ()
     exports: tuple = ()
     editable: tuple = ()  # docs the assistant may edit, beside each person's folder
+    style: str = ""  # the bot's voice in the chat, read after the formatting guide (gestures)
+    sticker_set: str = ""  # a Telegram sticker set the answers may send from; none: no stickers
+    # hosts (and their subdomains) answers may send an image from by its address; Telegram fetches
+    # it with no tap, so only trusted hosts: an open list would let a page the assistant read send
+    # the chat's data anywhere. None: no photos
+    photo_hosts: tuple = ()
 
     @classmethod
     def from_dict(cls, raw: object) -> Settings:
@@ -225,6 +231,15 @@ class Settings:
             sources=tuple(sources) if isinstance(sources, list | tuple) else (sources,),
             exports=tuple(exports) if isinstance(exports, list | tuple) else (exports,),
             editable=tuple(editable) if isinstance(editable, list | tuple) else (editable,),
+            style=str(tg.get("style") or "") if isinstance(tg.get("style"), str) else "",
+            sticker_set=str(tg.get("sticker_set") or "")
+            if isinstance(tg.get("sticker_set"), str)
+            else "",
+            photo_hosts=tuple(
+                str(h) for h in tg.get("photo_hosts") or () if isinstance(h, str) and h.strip()
+            )
+            if isinstance(tg.get("photo_hosts"), list | tuple)
+            else (),
         )
 
     # convenience, once `settings_errors` said the values are good

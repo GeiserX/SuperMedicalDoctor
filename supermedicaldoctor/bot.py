@@ -42,7 +42,16 @@ from zoneinfo import ZoneInfo
 
 import yaml
 
-from supermedicaldoctor import __version__, assistant, edits, export, records, schedule
+from supermedicaldoctor import (
+    __version__,
+    assistant,
+    edits,
+    export,
+    gestures,
+    records,
+    render,
+    schedule,
+)
 from supermedicaldoctor.i18n import Translator
 from supermedicaldoctor.records import (
     SETTINGS_FILE,
@@ -335,6 +344,7 @@ class Bot:
         self.clock, self.sleep = time.monotonic, time.sleep
         self._q = threading.Lock()
         self._newest: dict[int, float] = {}
+        self._stickers: dict = {}  # the settings' sticker set, read once ({"name", "set"})
         self._voicing: dict[int, dict] = {}
         self._running: dict[int, Turn] = {}
         self._resting: dict[int, float] = {}  # chat -> clock() its lines wait for (no capacity)
@@ -1485,6 +1495,9 @@ class Bot:
             rules = assistant.rules(
                 {pid: p.name for pid, p in s.people.items()}, s.language, instructions
             )
+            rules += "\n\n" + gestures.guide(
+                s.language, s.style, bool(s.sticker_set), s.photo_hosts
+            )
             turn = assistant.turn(
                 conversation,
                 rules,
@@ -1542,7 +1555,8 @@ class Bot:
         ]
         covered = [*lines, *handed]
         reply_to = _mid(covered[0]) if len(covered) == 1 else None
-        text, blocks = assistant.extract(reply.text)
+        text, acts = gestures.extract(reply.text, s.photo_hosts, self.t("file_name"))
+        text, blocks = assistant.extract(text)
         text, settings_blocks = assistant.extract(text, "settings")
         text, edit_blocks = assistant.extract(text, "edit")
         text, offered = assistant.extract_options(text)
@@ -1555,6 +1569,10 @@ class Bot:
             return
         if text:
             self.kv.add_chat(chat, "assistant", None, text, int(self.now().timestamp()))
+        others = (
+            blocks or settings_blocks or edit_blocks or offered or listed
+        )  # each says something
+        self.act(chat, acts, _mid(covered[-1]), bool(text or others), reply_to, state.thread)
         attachments = {a.name: a for a in atts}
         for block in blocks:
             self.apply_block(chat, block, scope, asker, private, attachments, today, state.thread)
@@ -2956,29 +2974,40 @@ class Bot:
         saying they may answer in their own words; without, one that ends with a question
         carries a selective force_reply. False when a part could not be sent."""
         key = secrets.token_hex(4) if offered else None
+        asks = text.rstrip().endswith("?")
+        text = render.brief(text)  # a few lines, the rest folded: no page holds the detail here
         if offered:
             hint = self.t("yes_no_hint" if self.yes_no(offered) else "options_hint")
             text = f"{text}\n\n{hint}"
-        parts = split_text(text)
+        parts = render.split(text)
         sent = None
         for i, part in enumerate(parts):
             markup = None
             if i == len(parts) - 1 and key:
                 markup = _keyboard([[(label, f"o:{key}:{n}")] for n, label in enumerate(offered)])
-            elif i == len(parts) - 1 and text.rstrip().endswith("?"):
+            elif i == len(parts) - 1 and asks:
                 markup = {"force_reply": True, "selective": True}
             parameters = None
             if reply_to and i == 0:
                 parameters = {"message_id": reply_to, "allow_sending_without_reply": True}
+            params = {
+                "chat_id": chat,
+                "reply_parameters": parameters,
+                "reply_markup": markup,
+                "message_thread_id": self.thread_for(chat, thread),
+                "link_preview_options": {"is_disabled": True},
+            }
             try:
-                sent = self.tg.call(
-                    "sendMessage",
-                    chat_id=chat,
-                    text=part,
-                    reply_parameters=parameters,
-                    reply_markup=markup,
-                    message_thread_id=self.thread_for(chat, thread),
-                )
+                try:
+                    sent = self.tg.call(
+                        "sendMessage", text=render.to_html(part), parse_mode="HTML", **params
+                    )
+                except TelegramError as e:
+                    if e.code != 400:
+                        raise
+                    # markup Telegram will not parse: the same words as plain text, never lost
+                    log.info("formatting refused, sending plain text: %s", safe(e))
+                    sent = self.tg.call("sendMessage", text=part, **params)
             except TelegramError as e:
                 log.warning("send failed: %s", safe(e))
                 return False
@@ -2987,6 +3016,82 @@ class Bot:
             msg = sent.get("message_id") if isinstance(sent, Mapping) else None
             self.offer(chat, msg, key, offered, users, thread)
         return True
+
+    def act(
+        self,
+        chat: int,
+        acts: Mapping,
+        to: int | None,
+        texted: bool,
+        reply_to: int | None = None,
+        thread: int | None = None,
+    ) -> None:
+        """What the answer's gestures block asks for (gestures.py), each on its own after the
+        text, so a file or a reaction Telegram refuses never loses the answer. A reaction goes on
+        message `to`. When the answer said nothing and none of it reached the chat (no message to
+        react to, a refusal, no sticker set), the emoji is said instead, or that it could not be
+        sent, so the chat always hears back."""
+        if not any(acts.values()):
+            return
+        where = {"chat_id": chat, "message_thread_id": self.thread_for(chat, thread)}
+        shown = texted
+        for doc in acts["documents"]:
+            try:
+                self.tg.send_file(
+                    "sendDocument",
+                    "document",
+                    doc["name"],
+                    doc["data"],
+                    doc["mime"],
+                    caption=doc["caption"],
+                    **where,
+                )
+                shown = True
+            except TelegramError as e:
+                log.warning("document failed: %s", safe(e))
+        sends = [
+            ("sendPhoto", {"photo": p["url"], "caption": p["caption"]}) for p in acts["photos"]
+        ]
+        sticker = self.sticker(acts["sticker"])
+        if sticker:
+            sends.append(("sendSticker", {"sticker": sticker}))
+        for method, params in sends:
+            try:
+                self.tg.call(method, **params, **where)
+                shown = True
+            except TelegramError as e:
+                log.warning("%s failed: %s", method, safe(e))
+        if acts["react"] and to is not None:
+            try:
+                self.tg.call(
+                    "setMessageReaction",
+                    chat_id=chat,
+                    message_id=to,
+                    reaction=[{"type": "emoji", "emoji": acts["react"]}],
+                )
+                return
+            except TelegramError as e:
+                log.info("reaction failed: %s", safe(e))
+        if not shown:
+            note = (
+                {"message_id": reply_to, "allow_sending_without_reply": True} if reply_to else None
+            )
+            said = acts["react"] or acts["sticker"]
+            text = html.escape(said) if said else html.escape(self.t("send_failed"))
+            self.post(chat, text, thread=thread, reply_parameters=note)
+
+    def sticker(self, emoji: str | None) -> str | None:
+        """The file_id of the settings' sticker set for `emoji`, read once per set, or None."""
+        name = self.settings.sticker_set
+        if not emoji or not name:
+            return None
+        if self._stickers.get("name") != name:
+            try:
+                self._stickers = {"name": name, "set": self.tg.call("getStickerSet", name=name)}
+            except TelegramError as e:
+                log.warning("sticker set failed: %s", safe(e))
+                return None
+        return gestures.sticker_for(self._stickers.get("set"), emoji)
 
     # --- settings ------------------------------------------------------------------------
 

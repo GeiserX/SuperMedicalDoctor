@@ -98,6 +98,20 @@ The app takes fenced blocks out of `text`; nobody sees them.
   tap is that person's next message. «Sí»/«No» get their own hint line.
 - **`reminders`**: `- YYYY-MM-DD HH:MM | text [| person]`, offered under the answer with
   «Recordatorio aquí», «En el calendario» and «No», for that person only, for 30 minutes.
+- **`telegram`**: `react: <emoji>` puts one of Telegram's reactions on the message answered (an
+  answer that is only a reaction sends no text; if the reaction fails, the emoji goes as a
+  message), `sticker: <emoji>` sends that sticker of `telegram.sticker_set`, `photo: https://... |
+  caption` sends an image by its address when its host is in `telegram.photo_hosts` (three at
+  most; Telegram fetches it with no tap, so only trusted hosts).
+- **`document`**: ````` ````document name.md | caption ````` sends its text as a file (.md, .txt,
+  .csv, .json or .ics, 200 KB, three at most), for a report or anything meant to be kept.
+
+The answer itself is sent as Telegram HTML from light Markdown (`render.py`): bold, italic,
+underline, strike, spoilers, code, links, headings, lists, quotes, code blocks with their language,
+and a ```` ```fold ```` block as an expandable quote for the detail most people skip. A part
+Telegram cannot parse goes again as plain text. The gestures go after the text, each on its own,
+so one Telegram refuses never loses the answer. The bot's voice (`telegram.style`) is read by the
+assistant after the formatting rules.
 
 Every offer says «Si no respondes, no hago nada.» and, untapped, gives way to «Sin respuesta: nada».
 

@@ -34,6 +34,12 @@ telegram:
   admins: [pablo]             # person ids: /estado, /nuevo, /presentacion, instructions
   history_scope: all          # all | asked: all keeps the group's other messages as context
   history_days: 14            # 0..60: the chat log a fresh conversation is recapped from
+  style: |                    # the bot's voice in the chat, read after the formatting rules
+    Calm and clear. Few emojis, no stickers. Summary first, details folded.
+  sticker_set: ""             # a Telegram sticker set answers may send from; empty: no stickers
+  photo_hosts: []             # hosts answers may send an image from by its address; none: no photos.
+                              # Telegram fetches it with no tap: only hosts you trust, or a page the
+                              # assistant reads could send the chat's data to a server in the URL
 people:
   lucia: {name: Lucía, user_id: 111, username: lucia_tg, calendar: cal-lucia}
   pablo: {name: Pablo, user_id: 222, username: null, calendar: cal-pablo}
