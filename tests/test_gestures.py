@@ -79,6 +79,18 @@ def test_a_long_answer_comes_out_short_with_the_detail_folded(make_bot):
     assert shown.strip() == "El hierro con zumo se absorbe mejor."
     assert "Estudio 39" in folded
     assert msg["reply_markup"] == {"force_reply": True, "selective": True}
+    assert msg["text"].endswith("</blockquote>\n¿Lo apunto?")  # the question stays in sight
+
+
+def test_a_gesture_only_answer_that_reaches_nobody_still_answers(make_bot):
+    bot = make_bot()  # no sticker set: the sticker cannot go, so its emoji is said
+    plugin(bot).REPLIES[:] = ["```telegram\nsticker: 🎉\n```"]
+    say(bot, "hola", mention=True)
+    assert last_sent(bot)["text"] == "🎉"
+    bot.tg.fail_next("sendDocument", 400, "Bad Request: file is empty")
+    plugin(bot).REPLIES[:] = ["````document informe.md\n# Informe\n````"]
+    say(bot, "informe", mention=True)
+    assert last_sent(bot)["text"] == bot.t("send_failed")
 
 
 def test_a_reaction_alone_says_nothing(make_bot):
@@ -134,6 +146,7 @@ def test_the_formatting_guide_and_the_voice_reach_the_rules(make_bot):
     say(bot, "hola", mention=True)
     rules = plugin(bot).CALLS[-1]["turn"]["rules"]
     assert "```fold" in rules and "react: 👍" in rules
+    assert "Sé breve" in rules  # in the household's language, like the rest of the rules
     assert "sticker:" not in rules
 
 

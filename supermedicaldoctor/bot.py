@@ -1495,7 +1495,9 @@ class Bot:
             rules = assistant.rules(
                 {pid: p.name for pid, p in s.people.items()}, s.language, instructions
             )
-            rules += "\n\n" + gestures.guide("en", s.style, bool(s.sticker_set), s.photo_hosts)
+            rules += "\n\n" + gestures.guide(
+                s.language, s.style, bool(s.sticker_set), s.photo_hosts
+            )
             turn = assistant.turn(
                 conversation,
                 rules,
@@ -1567,7 +1569,10 @@ class Bot:
             return
         if text:
             self.kv.add_chat(chat, "assistant", None, text, int(self.now().timestamp()))
-        self.act(chat, acts, _mid(covered[-1]), bool(text), reply_to, state.thread)
+        others = (
+            blocks or settings_blocks or edit_blocks or offered or listed
+        )  # each says something
+        self.act(chat, acts, _mid(covered[-1]), bool(text or others), reply_to, state.thread)
         attachments = {a.name: a for a in atts}
         for block in blocks:
             self.apply_block(chat, block, scope, asker, private, attachments, today, state.thread)
@@ -3023,7 +3028,11 @@ class Bot:
     ) -> None:
         """What the answer's gestures block asks for (gestures.py), each on its own after the
         text, so a file or a reaction Telegram refuses never loses the answer. A reaction goes on
-        message `to`; when it cannot and the answer had no text, the emoji is said instead."""
+        message `to`. When the answer said nothing and none of it reached the chat (no message to
+        react to, a refusal, no sticker set), the emoji is said instead, or that it could not be
+        sent, so the chat always hears back."""
+        if not any(acts.values()):
+            return
         where = {"chat_id": chat, "message_thread_id": self.thread_for(chat, thread)}
         shown = texted
         for doc in acts["documents"]:
@@ -3052,9 +3061,7 @@ class Bot:
                 shown = True
             except TelegramError as e:
                 log.warning("%s failed: %s", method, safe(e))
-        if not acts["react"]:
-            return
-        if to is not None:
+        if acts["react"] and to is not None:
             try:
                 self.tg.call(
                     "setMessageReaction",
@@ -3069,7 +3076,9 @@ class Bot:
             note = (
                 {"message_id": reply_to, "allow_sending_without_reply": True} if reply_to else None
             )
-            self.post(chat, html.escape(acts["react"]), thread=thread, reply_parameters=note)
+            said = acts["react"] or acts["sticker"]
+            text = html.escape(said) if said else html.escape(self.t("send_failed"))
+            self.post(chat, text, thread=thread, reply_parameters=note)
 
     def sticker(self, emoji: str | None) -> str | None:
         """The file_id of the settings' sticker set for `emoji`, read once per set, or None."""
