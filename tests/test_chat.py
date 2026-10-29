@@ -64,6 +64,14 @@ def test_choices_come_as_buttons_and_a_tap_is_that_persons_next_message(make_bot
     assert contents(plugin(bot).CALLS[-1])[-1] == "Lucía: Sí"
 
 
+def test_choices_carry_only_the_no_answer_line_under_them(make_bot):
+    bot = make_bot()
+    plugin(bot).REPLIES[:] = ["¿Cuál?\n\n```options\n- Mañana\n- Tarde\n```"]
+    say(bot, "x", mention=True)
+    # the buttons say what they do: no line inviting something else
+    assert last_sent(bot)["text"] == "¿Cuál?\n\nSi no respondes, no hago nada."
+
+
 def test_choices_nobody_taps_expire_into_nothing(make_bot):
     bot = make_bot()
     plugin(bot).REPLIES[:] = ["¿Cuál?\n\n```options\n- Mañana\n- Tarde\n```"]
