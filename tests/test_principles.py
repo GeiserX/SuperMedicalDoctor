@@ -59,6 +59,15 @@ def test_the_bots_rules_keep_only_what_is_specific_to_it():
         assert kept in own, kept
 
 
+def test_the_rules_say_the_bot_adds_a_hint_only_for_si_and_no():
+    own = " ".join(assistant.rules(PEOPLE, "en").split()).lower()
+    assert "the bot adds the line about answering in their own words" not in own
+    assert (
+        "for a sí/no pair the bot adds a line" in own
+        and "under other options it adds nothing" in own
+    )
+
+
 def test_the_specific_rules_check_can_fail():
     """Positive control: a sentence copied from the principles into the rules is caught."""
     copied = "You are the doctor assistant. Act only on what is addressed\n  to you."

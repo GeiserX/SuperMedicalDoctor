@@ -119,7 +119,8 @@ any record or settings block:
 - No
 ```
 - At most five, each a few words (40 characters at most), in {language_name}.
-- The bot adds the line about answering in their own words, so do not write it.
+- For a Sí/No pair the bot adds a line saying they may answer otherwise; under other options it
+  adds nothing. Do not write either line yourself.
 
 Offers
 Useful things to offer: a reminder before a dose or a test, an appointment or a preparation in
