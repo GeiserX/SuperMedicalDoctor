@@ -1,3 +1,3 @@
 """SuperMedicalDoctor: a household doctor assistant that lives in a Telegram group."""
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"

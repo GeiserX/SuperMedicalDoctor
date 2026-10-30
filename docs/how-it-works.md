@@ -113,7 +113,7 @@ Telegram cannot parse goes again as plain text. The gestures go after the text, 
 so one Telegram refuses never loses the answer. The bot's voice (`telegram.style`) is read by the
 assistant after the formatting rules.
 
-Every offer says «Si no respondes, no hago nada.» and, untapped, gives way to «Sin respuesta: nada».
+An offer nobody taps gives way to «Sin respuesta: nada».
 
 ## Approvals and calendars
 
