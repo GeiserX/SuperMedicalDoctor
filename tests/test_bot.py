@@ -259,9 +259,7 @@ def test_a_new_appointment_is_offered_for_its_persons_calendar(make_bot):
     plugin(bot).REPLIES[:] = [record("Vale.", ADD)]
     say(bot, "x", user=PABLO, mention=True)
     offer = last_sent(bot)
-    assert offer["text"].endswith(
-        "@lucia_tg, ¿la pongo en tu calendario? Si no respondes, no hago nada."
-    )
+    assert offer["text"].endswith("@lucia_tg, ¿la pongo en tu calendario?")
     data = buttons(offer)
     assert [t for t, _ in data] == ["En el calendario", "No"]
     tap(bot, data[0][1], user=PABLO)
@@ -421,7 +419,7 @@ def test_the_ask_after_an_appointment_and_its_no_marks_it_done(make_bot, data_re
     bot.now.at = at(TODAY.replace(day=12), 12, 30)
     bot.tick(bot.now())
     ask = next(p for p in sent(bot) if "¿qué tal la cita de Analítica de control?" in p["text"])
-    assert ask["text"].endswith("Si no respondes, no hago nada.")
+    assert ask["text"].endswith("cuéntamelo o mándame el PDF.")
     yes, no = buttons(ask)
     assert (yes[0], no[0]) == ("Sí, te cuento", "No")
     tap(bot, no[1], user=PABLO)
@@ -467,7 +465,7 @@ def test_a_reminder_for_someone_else_is_offered_to_them(make_bot):
     offer = last_sent(bot)
     assert offer["text"] == (
         '<a href="tg://user?id=222">Pablo</a>, ¿quieres que te lo recuerde?\n'
-        "jueves 11 de marzo a las 8:00: Toma el omega\n\nSi no respondes, no hago nada."
+        "jueves 11 de marzo a las 8:00: Toma el omega"
     )
     here = buttons(offer)[0][1]
     tap(bot, here, user=LUCIA)
@@ -562,7 +560,7 @@ def test_a_whole_text_that_drops_lines_is_asked_and_nothing_changes_without_si(m
     )
     assert "− Regla 1 de la casa." in ask["text"] and "− Regla 10 de la casa." in ask["text"]
     assert "+ Contesta siempre con la fuente." in ask["text"]
-    assert ask["text"].endswith("Si no respondes, no hago nada.")
+    assert ask["text"].endswith("+ Contesta siempre con la fuente.")
     yes, no = buttons(ask)
     assert (yes[0], no[0]) == ("Sí", "No")
     tap(bot, yes[1], user=LUCIA)  # not an admin

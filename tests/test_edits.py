@@ -147,7 +147,7 @@ def test_a_proposed_edit_waits_for_si_and_no_leaves_it(make_bot, data_repo):
     say(bot, "hoy he ido al centro", user=LUCIA, mention=True)
     ask = last_sent(bot)
     assert ask["text"].startswith("@lucia_tg, ¿hago este cambio?\n• people/lucia/notes.md\n+ ")
-    assert ask["text"].endswith("Si no respondes, no hago nada.")
+    assert "no respondes" not in ask["text"]
     assert data_repo.remote_log() == before
     no = buttons(ask)[1][1]
     tap(bot, no, user=PABLO)
