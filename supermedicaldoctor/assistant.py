@@ -46,6 +46,32 @@ PRINCIPLES = Path(__file__).parent / "principles"  # the shared assistant princi
 DEFAULT_TIMEOUT_S = 900
 NOT_SETTINGS = ("plugin", "instructions")  # the settings keys a plugin's settings leave out
 LANGUAGE_NAMES = {"en": "English", "es": "Spanish"}
+# What the rules say about who reaches the assistant in the group, by `answer_scope`
+REACH_ASKED = (
+    "In the group, a message reaches you when it mentions you or replies to you; every voice note, "
+    "photo and file from a person reaches you too. In a private chat everything does."
+)
+REACH_ALL = (
+    "In the group, every message from a person reaches you and is meant for you, with or without a "
+    "mention; every voice note, photo and file reaches you too. In a private chat everything does. "
+    "So in this bot what is addressed to you (principle 1) is every message from a person; only "
+    'lines marked "[not to you]" are context you never answer.'
+)
+UNADDRESSED_ASKED = (
+    '- Lines starting with "[not to you]" are what people say to each other: context only.'
+)
+NO_REPLY = "[[no reply]]"  # the whole answer when the assistant deliberately sends nothing
+UNADDRESSED_ALL = f"""\
+- Lines starting with "[no mention]" did not mention you or reply to you: the household telling
+  you something, or talking among themselves. Take in what they tell you and act on it as you
+  would if they had asked you (record it, update what you track). Then answer with only a
+  reaction (react: 👍 in the telegram block, for "seen and noted"), unless the line asks you
+  something or changes what someone has to do: then answer in words, and say briefly that you
+  took note. When it is talk between people with nothing for you, send nothing: your whole
+  answer is {NO_REPLY}, and the bot sends nothing to the chat. Never put {NO_REPLY} beside words.
+- A mention of you or a reply to you always gets an answer in words.
+- Lines starting with "[not to you]" are from someone you do not answer: context only."""
+_NO_REPLY = re.compile(r"\[\[\s*no[\s_-]*reply\s*\]\]", re.IGNORECASE)
 WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 APPOINTMENT_DAYS = 60  # context.md lists the pending appointments this far ahead
 DONE_SHOWN = 3  # and the last done ones
@@ -292,6 +318,14 @@ def _call(data: str | Path, rel: str | None, fn: Callable, args: tuple, plugin_s
     return box.get("out")
 
 
+def strip_no_reply(text: str) -> tuple[str, bool]:
+    """`text` without the assistant's «[[no reply]]» marker, wherever it stands and however it
+    is spaced or cased, and whether it was there. The marker never reaches the chat: an answer
+    that is only the marker sends nothing."""
+    out, n = _NO_REPLY.subn("", text)
+    return (out.strip() if n else text), bool(n)
+
+
 def converse(data: str | Path, rel: str | None, turn: dict, plugin_settings: dict) -> Reply:
     """Run the plugin's `converse` and wait at most `timeout_s` (see `_call`)."""
     fn = function(data, rel, "converse")
@@ -399,21 +433,20 @@ def rules(
     language: str,
     instructions: str = "",
     reach: str = "",
+    answer_scope: str = "asked",
 ) -> str:
     """The shared assistant principles in the household's language, then `rules.md` filled in.
     Plain replacement, not `str.format`: the text holds JSON braces. `people` maps each id to
-    a name; `reach` says which group messages reach the assistant."""
+    a name; `reach` says which group messages reach the assistant; `answer_scope: all` says
+    every person's group message does, and how to answer one without a mention."""
     named = [f"{name} (id {pid})" for pid, name in people.items()]
+    everyone = answer_scope == "all"
     values = {
         "people": _join(named) or "the household",
         "person_ids": ", ".join(people) or "-",
         "language_name": LANGUAGE_NAMES.get(language, language),
-        "reach": reach
-        or (
-            "In the group, a message reaches you when it mentions you or replies to you; every "
-            "voice note, photo and file from a person reaches you too. In a private chat "
-            "everything does."
-        ),
+        "reach": reach or (REACH_ALL if everyone else REACH_ASKED),
+        "unaddressed": UNADDRESSED_ALL if everyone else UNADDRESSED_ASKED,
         "instructions": (instructions or "").strip(),
     }
     text = RULES.read_text(encoding="utf-8")

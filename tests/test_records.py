@@ -67,6 +67,7 @@ def test_the_seed_settings_are_valid(data):
         ('day_before_at: "20:00"', 'day_before_at: "25:00"', "bad_day_before_at"),
         ('quiet: ["23:00", "07:00"]', 'quiet: ["23:00"]', "bad_quiet"),
         ("history_scope: all", "history_scope: some", "bad_history_scope"),
+        ("history_scope: all", "history_scope: all\n  answer_scope: some", "bad_answer_scope"),
         ("followup: true", "followup: yes please", "bad_followup"),
         ("timezone: Europe/Madrid", "timezone: Mars/Base", "bad_timezone"),
         ("plugin: plugins/fake.py", "plugin: ../outside.py", "plugin_outside_data"),

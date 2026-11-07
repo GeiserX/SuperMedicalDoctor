@@ -33,6 +33,8 @@ telegram:
   thread_id: null             # forum topic for the messages the bot starts itself; null is General
   admins: [pablo]             # person ids: /estado, /nuevo, /presentacion, instructions
   history_scope: all          # all | asked: all keeps the group's other messages as context
+  answer_scope: asked         # asked | all: all answers a person's group text without a mention
+                              # too, often with only a reaction; implies history_scope: all
   history_days: 14            # 0..60: the chat log a fresh conversation is recapped from
   style: |                    # the bot's voice in the chat, read after the formatting rules
     Calm and clear. Few emojis, no stickers. Summary first, details folded.

@@ -13,7 +13,8 @@ VOICE_WAIT_S for a voice note of that chat still being heard. What arrives while
 handed to the plugin (`turn["incoming"]`); the answer names what it covered, and the rest goes with
 the next turn. An edited message is handled by where it is: still queued, its new wording goes; in
 the running turn, a correction joins it; already answered, a new turn checks that answer; an edit
-that now addresses the bot is a new message.
+that now addresses the bot is a new message. With `answer_scope: all` a person's group text
+addresses the bot even without a mention; it goes in marked «[no mention]».
 
 Scope is structural: a private chat's turn carries only that person's data, a group turn
 everyone's. Before every turn the data repository is pulled and the listed files of other
@@ -127,6 +128,9 @@ NO_ONE = "no one could be asked"  # the note of an ask declined because nobody c
 CONTEXT_MAX = 50  # unaddressed group lines a turn takes as context, the newest
 LOG_KEEP_DAYS = 7  # the chat log keeps at least this much, for the context lines of a turn
 NOT_TO_YOU = "[not to you] "  # the mark of a group line that did not call the bot
+# With `answer_scope: all` a group line without a mention or a reply starts a turn too, marked so
+# the assistant knows nobody asked it anything directly
+NO_MENTION = "[no mention] "
 OFFER_GONE = "remind_timeout"  # the label an offer's buttons give way to when nobody answered
 REMIND_TTL_S = 1800  # an offered reminder can be tapped this long; then nothing is done
 REMIND_DAYS = 60  # the furthest ahead a reminder may be
@@ -640,9 +644,11 @@ class Bot:
         return " ".join(str(frm.get("first_name") or "?").split())[:64]
 
     def log_seen(self, chat: int, msg: Mapping, text: str) -> None:
-        """A group message that does not call the bot. With `history_scope: all` the chat log
-        keeps it, and it goes to the next turn as context marked «[not to you]»."""
-        if self.settings.history_scope != "all" or not self.has_assistant:
+        """A group message that does not call the bot. With `history_scope: all` (or
+        `answer_scope: all`, which implies it) the chat log keeps it, and it goes to the next
+        turn as context marked «[not to you]»."""
+        s = self.settings
+        if (s.history_scope != "all" and s.answer_scope != "all") or not self.has_assistant:
             return
         body = text.strip()
         if body.startswith("/"):
@@ -689,10 +695,13 @@ class Bot:
 
     def addressed(self, msg: Mapping, text: str, private: bool, p: Person) -> str | None:
         """The line for the assistant when the message is meant for the bot, else None: a
-        private chat, a reply to any bot message, or a message that mentions the bot."""
+        private chat, a reply to any bot message, or a message that mentions the bot. With
+        `answer_scope: all` any other group text of a person is meant for it too, marked
+        «[no mention]»; a bot's never is."""
         to_bot = self.to_bot(msg)
         body, mentioned = self._strip_mention(msg, text)
-        if not (private or to_bot or mentioned):
+        loose = not (private or to_bot or mentioned)
+        if loose and not self.answers_all(msg):
             return None
         body = body.strip()
         if not body:
@@ -700,7 +709,19 @@ class Bot:
         prefix = f"{p.name}{self.replied(msg)}: "
         if to_bot:
             prefix += f"[replying to the bot: {self.quoted(msg)}] "
+        if loose:
+            prefix = NO_MENTION + prefix
         return prefix + body
+
+    def answers_all(self, msg: Mapping) -> bool:
+        """Whether a group text without a mention starts a turn: `answer_scope: all`, and it
+        comes from a person writing as themselves, never a bot or a chat."""
+        frm = msg.get("from") or {}
+        return (
+            self.settings.answer_scope == "all"
+            and not frm.get("is_bot")
+            and not msg.get("sender_chat")
+        )
 
     def replied(self, msg: Mapping) -> str:
         """« (replying to <sender>'s <kind> of <UTC date>)» when the message replies to an
@@ -890,14 +911,17 @@ class Bot:
 
     def queue_line(self, chat: int, line: dict, run: bool = True) -> None:
         """Append `line` to `pending:<chat>` (the newest 10, none older than 7 days) and queue
-        the chat: a voice note for the hearing thread, text for the worker."""
+        the chat: a voice note for the hearing thread, text for the worker. With `answer_scope:
+        all` every person's group line queues here instead of waiting as context, so the queue
+        keeps as many as a turn takes as context (50)."""
         now = int(self.now().timestamp())
+        cap = CONTEXT_MAX if self.settings.answer_scope == "all" else PENDING_MAX
         dropped = []
 
         def add(lines):
             lines = [*(lines or []), line]
             kept = [x for x in lines if now - int(x.get("ts", 0)) <= PENDING_MAX_AGE_S]
-            kept = kept[-PENDING_MAX:]
+            kept = kept[-cap:]
             dropped.append(len(lines) - len(kept))
             return kept
 
@@ -1436,15 +1460,17 @@ class Bot:
     def _converse(self, chat: int, key: str, lines: list[dict], state: Turn) -> None:
         s = self.settings
         block_cfg = s.assistant or {}
-        try:
-            self.tg.call(
-                "sendChatAction",
-                chat_id=chat,
-                action="typing",
-                message_thread_id=self.thread_for(chat, state.thread),
-            )
-        except TelegramError as e:
-            log.warning("sendChatAction failed: %s", safe(e))
+        # lines nobody addressed to the bot may get no answer at all, so they show no typing
+        if not all(str(x.get("content", "")).startswith(NO_MENTION) for x in lines):
+            try:
+                self.tg.call(
+                    "sendChatAction",
+                    chat_id=chat,
+                    action="typing",
+                    message_thread_id=self.thread_for(chat, state.thread),
+                )
+            except TelegramError as e:
+                log.warning("sendChatAction failed: %s", safe(e))
         started = time.monotonic()
         with DATA_LOCK:
             self.repo.pull()
@@ -1493,7 +1519,10 @@ class Bot:
                 x for x in (*s.rules, str(block_cfg.get("instructions") or "")) if x.strip()
             )
             rules = assistant.rules(
-                {pid: p.name for pid, p in s.people.items()}, s.language, instructions
+                {pid: p.name for pid, p in s.people.items()},
+                s.language,
+                instructions,
+                answer_scope=s.answer_scope,
             )
             rules += "\n\n" + gestures.guide(
                 s.language, s.style, bool(s.sticker_set), s.photo_hosts
@@ -1555,7 +1584,9 @@ class Bot:
         ]
         covered = [*lines, *handed]
         reply_to = _mid(covered[0]) if len(covered) == 1 else None
-        text, acts = gestures.extract(reply.text, s.photo_hosts, self.t("file_name"))
+        # the assistant's «[[no reply]]»: nothing goes to the chat, and the turn still counts
+        raw, silent = assistant.strip_no_reply(reply.text)
+        text, acts = gestures.extract(raw, s.photo_hosts, self.t("file_name"))
         text, blocks = assistant.extract(text)
         text, settings_blocks = assistant.extract(text, "settings")
         text, edit_blocks = assistant.extract(text, "edit")
@@ -1563,12 +1594,16 @@ class Bot:
         text, listed = assistant.extract_reminders(text)
         offered = reply.options or offered
         listed = reply.reminders or listed
+        if silent and not any(c.isalnum() for c in text):
+            text = ""  # the marker's leftover formatting («`», «**», «.») is not an answer
         users = _users(covered)
         if text and not self.say(chat, text, reply_to, offered, users, state.thread):
             self.post(chat, self.t("ai_down"), thread=state.thread)
             return
         if text:
             self.kv.add_chat(chat, "assistant", None, text, int(self.now().timestamp()))
+        elif silent and not any(acts.values()):
+            log.info("answer: nothing to say")
         others = (
             blocks or settings_blocks or edit_blocks or offered or listed
         )  # each says something
@@ -1583,8 +1618,11 @@ class Bot:
             self.apply_edits(
                 chat, edit_blocks, scope, asker, private, admin, _users(covered), state.thread
             )
-        if text:
-            self.remember(chat, covered, text)
+        # with `answer_scope: all` a reaction or silence answers too, so an edit of that line
+        # is checked against it instead of coming back as a new message
+        stand_in = f"(reaction {acts['react']})" if acts["react"] else "(no reply)"
+        if text or s.answer_scope == "all":
+            self.remember(chat, covered, text or stand_in)
         taken = {x["id"] for x in covered}
         self.kv.update_json(key, lambda cur: [x for x in cur or [] if x["id"] not in taken] or None)
         if seen:
@@ -2785,6 +2823,8 @@ class Bot:
             return
         key = f"pending:{chat_id}"
         found: list[dict] = []
+        # with `answer_scope: all` an edit can add or remove a mention: the line is built anew
+        fresh = self.addressed(msg, text, private, p)
 
         def swap(cur):
             out = []
@@ -2797,6 +2837,9 @@ class Bot:
                             head = f"{p.name}: "
                         x = {**x, "content": head + body, "body": body}
                         x["ts"] = int(self.now().timestamp())
+                    marked = x["content"].startswith(NO_MENTION)
+                    if fresh and (marked or fresh.startswith(NO_MENTION)) and x["content"] != fresh:
+                        x = {**x, "content": fresh, "body": body}
                 out.append(x)
             return out or None
 

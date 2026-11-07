@@ -36,6 +36,7 @@ STATUSES = ("pending", "done", "cancelled")
 CHATS = ("group", "private")
 CONDITION_STATUSES = ("active", "past", "suspected")
 HISTORY_SCOPES = ("asked", "all")
+ANSWER_SCOPES = ("asked", "all")  # all: a group line without a mention starts a turn too
 HISTORY_DAYS_MAX = 60
 SOURCE_KINDS = ("github", "gitea")
 EXPORT_KINDS = ("chef",)
@@ -161,6 +162,7 @@ class Settings:
     thread_id: object = None
     admins: tuple = ()
     history_scope: str = "asked"
+    answer_scope: str = "asked"
     history_days: object = 14
     people: Mapping[str, Person] = field(default_factory=dict)
     people_raw: Mapping = field(default_factory=dict)
@@ -218,6 +220,7 @@ class Settings:
             thread_id=tg.get("thread_id"),
             admins=tuple(str(a) for a in admins) if isinstance(admins, list | tuple) else admins,
             history_scope=str(tg.get("history_scope") or "asked"),
+            answer_scope=str(tg.get("answer_scope") or "asked"),
             history_days=tg.get("history_days", 14),
             people=people,
             people_raw=dict(people_raw),
@@ -316,6 +319,8 @@ def settings_errors(s: Settings, data: str | Path) -> list[str]:
         errors.append("bad_admins")
     if s.history_scope not in HISTORY_SCOPES:
         errors.append("bad_history_scope")
+    if s.answer_scope not in ANSWER_SCOPES:
+        errors.append("bad_answer_scope")
     days = s.history_days
     if isinstance(days, bool) or not isinstance(days, int) or not 0 <= days <= HISTORY_DAYS_MAX:
         errors.append("bad_history_days")
