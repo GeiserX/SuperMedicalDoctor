@@ -19,6 +19,15 @@ never knows which provider answers.
   is meant for the doctor. The caption is the message.
 - With `history_scope: all`, the group's other messages are kept in the chat log and go to the next
   turn as context marked `[not to you]`. They are never answered.
+- With `answer_scope: all`, every text from a person in the group reaches it, mention or not, for
+  a group built around the bot where people talk to it without a mention. A text without a mention
+  or a reply to the bot goes in like an addressed one (same burst, same joining of a running turn,
+  same edits, same queue across a restart) marked `[no mention]`. The rules tell the assistant to
+  take in what such a line says and act on it, then answer with only a reaction (👍, seen and
+  noted) unless it asks something or changes what someone has to do, and to send nothing when it is
+  talk between people. A mention or a reply still gets words. Texts from a bot, a channel or anyone
+  outside `people` never start a turn; they stay context marked `[not to you]`. `answer_scope: all`
+  keeps that context without `history_scope: all`.
 - In a private chat everything reaches it.
 - The bot must read every group message: make it an administrator of the group, or turn its
   privacy mode off in BotFather (then remove it from the group and add it again). Without one of
@@ -55,7 +64,7 @@ def answer(request: dict, decision: dict, settings: dict) -> dict: ...  # option
 | `conversation` | what the plugin returned last time in this chat, or null |
 | `rules` | the shared principles, then `rules.md` filled in, then the household's rules and instructions |
 | `context` | `context.md`: today, ages, pending appointments (60 days) and the last done, medicines and supplements by slot, the latest value of each lab test, the chat's reminders, each source's freshness, the data commit and whether the pull worked |
-| `new`, `history` | the lines not kept yet (with `[not to you]` context), and the chat log of the last `history_days` without them |
+| `new`, `history` | the lines not kept yet (with `[not to you]` context, and `[no mention]` lines with `answer_scope: all`), and the chat log of the last `history_days` without them |
 | `scope` | the person ids whose data the turn carries |
 | `asker` | the person the turn answers; null when it covers several people's lines |
 | `files` | `{"data/<path>": text}`: `settings.yaml` without `assistant.instructions`, and every file under `people/<id>/` for the scope, except `documents/` |
@@ -71,7 +80,11 @@ user id, username and calendar) and `chat_id`.
 
 The return value is a string or `{"text", "conversation", "kept", "covers", "options",
 "reminders", "later"}`. `kept: false` (or an exception, or the timeout) is a failed turn: nothing is
-applied and the lines go with the next one. An exception with a numeric `retry_after`
+applied and the lines go with the next one. An answer that is only `[[no reply]]` is the assistant
+choosing to say nothing: nothing goes to the chat, no error is posted, the turn counts as answered
+and its lines are not sent again. The app takes `[[no reply]]` out of any answer before it is sent,
+so the marker never reaches the chat; it exists because a provider may treat an empty answer as a
+failure. An exception with a numeric `retry_after`
 (seconds) means the provider is out of capacity: the chat hears the wait once, and the lines, with
 any that arrive meanwhile, go to the assistant by themselves when it is over. `later` is a callable the app runs on its own thread
 after posting the text; its string is posted too.

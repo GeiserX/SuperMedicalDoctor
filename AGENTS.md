@@ -19,7 +19,7 @@ Run the test suite once per change. It drives real git repositories in temp dirs
 - Code never knows a person, a chat, a doctor or a real appointment. Those live in the data repo. Keep every example and test fictional.
 - Every user-facing string is translatable. English is the source; Spanish ships too, and the bot talks Spanish to its users.
 - A private chat carries only that person's data; a group turn carries everyone's. The scope is built by the app, never by the assistant.
-- In the group the bot reads replies to the bot, commands, messages that mention it, every voice note and every photo or file from a person. With `history_scope: all` the group's other messages go to the assistant as context marked `[not to you]`, never answered.
+- In the group the bot reads replies to the bot, commands, messages that mention it, every voice note and every photo or file from a person. With `history_scope: all` the group's other messages go to the assistant as context marked `[not to you]`, never answered. With `answer_scope: all` a person's other group texts start a turn too, marked `[no mention]`; the assistant answers them with a reaction, with words, or with nothing (`[[no reply]]`, which the app swallows). A bot's or a stranger's text never starts a turn.
 - Whatever the bot offers to do (a reminder, a calendar entry) waits for a tap; without one nothing happens.
 - The tracker syncs to a private remote named in `.beads/config.yaml`, never to this public repo. Nothing written here names the server behind it.
 - Conventional commits. PR titles say why, not what.

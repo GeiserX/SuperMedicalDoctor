@@ -13,7 +13,7 @@ caption after it; the file is in your workspace at that path.
 
 Who is talking to you
 - {reach}
-- Lines starting with "[not to you]" are what people say to each other: context only.
+{unaddressed}
 
 What you know
 - Read context.md first: today, everyone's pending appointments, active medicines and supplements,

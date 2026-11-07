@@ -13,7 +13,8 @@ VOICE_WAIT_S for a voice note of that chat still being heard. What arrives while
 handed to the plugin (`turn["incoming"]`); the answer names what it covered, and the rest goes with
 the next turn. An edited message is handled by where it is: still queued, its new wording goes; in
 the running turn, a correction joins it; already answered, a new turn checks that answer; an edit
-that now addresses the bot is a new message.
+that now addresses the bot is a new message. With `answer_scope: all` a person's group text
+addresses the bot even without a mention; it goes in marked «[no mention]».
 
 Scope is structural: a private chat's turn carries only that person's data, a group turn
 everyone's. Before every turn the data repository is pulled and the listed files of other
@@ -127,6 +128,9 @@ NO_ONE = "no one could be asked"  # the note of an ask declined because nobody c
 CONTEXT_MAX = 50  # unaddressed group lines a turn takes as context, the newest
 LOG_KEEP_DAYS = 7  # the chat log keeps at least this much, for the context lines of a turn
 NOT_TO_YOU = "[not to you] "  # the mark of a group line that did not call the bot
+# With `answer_scope: all` a group line without a mention or a reply starts a turn too, marked so
+# the assistant knows nobody asked it anything directly
+NO_MENTION = "[no mention] "
 OFFER_GONE = "remind_timeout"  # the label an offer's buttons give way to when nobody answered
 REMIND_TTL_S = 1800  # an offered reminder can be tapped this long; then nothing is done
 REMIND_DAYS = 60  # the furthest ahead a reminder may be
@@ -640,9 +644,11 @@ class Bot:
         return " ".join(str(frm.get("first_name") or "?").split())[:64]
 
     def log_seen(self, chat: int, msg: Mapping, text: str) -> None:
-        """A group message that does not call the bot. With `history_scope: all` the chat log
-        keeps it, and it goes to the next turn as context marked «[not to you]»."""
-        if self.settings.history_scope != "all" or not self.has_assistant:
+        """A group message that does not call the bot. With `history_scope: all` (or
+        `answer_scope: all`, which implies it) the chat log keeps it, and it goes to the next
+        turn as context marked «[not to you]»."""
+        s = self.settings
+        if (s.history_scope != "all" and s.answer_scope != "all") or not self.has_assistant:
             return
         body = text.strip()
         if body.startswith("/"):
@@ -689,10 +695,13 @@ class Bot:
 
     def addressed(self, msg: Mapping, text: str, private: bool, p: Person) -> str | None:
         """The line for the assistant when the message is meant for the bot, else None: a
-        private chat, a reply to any bot message, or a message that mentions the bot."""
+        private chat, a reply to any bot message, or a message that mentions the bot. With
+        `answer_scope: all` any other group text of a person is meant for it too, marked
+        «[no mention]»; a bot's never is."""
         to_bot = self.to_bot(msg)
         body, mentioned = self._strip_mention(msg, text)
-        if not (private or to_bot or mentioned):
+        loose = not (private or to_bot or mentioned)
+        if loose and not self.answers_all(msg):
             return None
         body = body.strip()
         if not body:
@@ -700,7 +709,19 @@ class Bot:
         prefix = f"{p.name}{self.replied(msg)}: "
         if to_bot:
             prefix += f"[replying to the bot: {self.quoted(msg)}] "
+        if loose:
+            prefix = NO_MENTION + prefix
         return prefix + body
+
+    def answers_all(self, msg: Mapping) -> bool:
+        """Whether a group text without a mention starts a turn: `answer_scope: all`, and it
+        comes from a person writing as themselves, never a bot or a chat."""
+        frm = msg.get("from") or {}
+        return (
+            self.settings.answer_scope == "all"
+            and not frm.get("is_bot")
+            and not msg.get("sender_chat")
+        )
 
     def replied(self, msg: Mapping) -> str:
         """« (replying to <sender>'s <kind> of <UTC date>)» when the message replies to an
@@ -1493,7 +1514,10 @@ class Bot:
                 x for x in (*s.rules, str(block_cfg.get("instructions") or "")) if x.strip()
             )
             rules = assistant.rules(
-                {pid: p.name for pid, p in s.people.items()}, s.language, instructions
+                {pid: p.name for pid, p in s.people.items()},
+                s.language,
+                instructions,
+                answer_scope=s.answer_scope,
             )
             rules += "\n\n" + gestures.guide(
                 s.language, s.style, bool(s.sticker_set), s.photo_hosts
@@ -1555,7 +1579,9 @@ class Bot:
         ]
         covered = [*lines, *handed]
         reply_to = _mid(covered[0]) if len(covered) == 1 else None
-        text, acts = gestures.extract(reply.text, s.photo_hosts, self.t("file_name"))
+        # the assistant's «[[no reply]]»: nothing goes to the chat, and the turn still counts
+        raw, silent = assistant.strip_no_reply(reply.text)
+        text, acts = gestures.extract(raw, s.photo_hosts, self.t("file_name"))
         text, blocks = assistant.extract(text)
         text, settings_blocks = assistant.extract(text, "settings")
         text, edit_blocks = assistant.extract(text, "edit")
@@ -1569,6 +1595,8 @@ class Bot:
             return
         if text:
             self.kv.add_chat(chat, "assistant", None, text, int(self.now().timestamp()))
+        elif silent and not any(acts.values()):
+            log.info("answer: nothing to say")
         others = (
             blocks or settings_blocks or edit_blocks or offered or listed
         )  # each says something
