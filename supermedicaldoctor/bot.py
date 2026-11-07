@@ -911,14 +911,17 @@ class Bot:
 
     def queue_line(self, chat: int, line: dict, run: bool = True) -> None:
         """Append `line` to `pending:<chat>` (the newest 10, none older than 7 days) and queue
-        the chat: a voice note for the hearing thread, text for the worker."""
+        the chat: a voice note for the hearing thread, text for the worker. With `answer_scope:
+        all` every person's group line queues here instead of waiting as context, so the queue
+        keeps as many as a turn takes as context (50)."""
         now = int(self.now().timestamp())
+        cap = CONTEXT_MAX if self.settings.answer_scope == "all" else PENDING_MAX
         dropped = []
 
         def add(lines):
             lines = [*(lines or []), line]
             kept = [x for x in lines if now - int(x.get("ts", 0)) <= PENDING_MAX_AGE_S]
-            kept = kept[-PENDING_MAX:]
+            kept = kept[-cap:]
             dropped.append(len(lines) - len(kept))
             return kept
 
@@ -1457,15 +1460,17 @@ class Bot:
     def _converse(self, chat: int, key: str, lines: list[dict], state: Turn) -> None:
         s = self.settings
         block_cfg = s.assistant or {}
-        try:
-            self.tg.call(
-                "sendChatAction",
-                chat_id=chat,
-                action="typing",
-                message_thread_id=self.thread_for(chat, state.thread),
-            )
-        except TelegramError as e:
-            log.warning("sendChatAction failed: %s", safe(e))
+        # lines nobody addressed to the bot may get no answer at all, so they show no typing
+        if not all(str(x.get("content", "")).startswith(NO_MENTION) for x in lines):
+            try:
+                self.tg.call(
+                    "sendChatAction",
+                    chat_id=chat,
+                    action="typing",
+                    message_thread_id=self.thread_for(chat, state.thread),
+                )
+            except TelegramError as e:
+                log.warning("sendChatAction failed: %s", safe(e))
         started = time.monotonic()
         with DATA_LOCK:
             self.repo.pull()
@@ -1589,6 +1594,8 @@ class Bot:
         text, listed = assistant.extract_reminders(text)
         offered = reply.options or offered
         listed = reply.reminders or listed
+        if silent and not any(c.isalnum() for c in text):
+            text = ""  # the marker's leftover formatting («`», «**», «.») is not an answer
         users = _users(covered)
         if text and not self.say(chat, text, reply_to, offered, users, state.thread):
             self.post(chat, self.t("ai_down"), thread=state.thread)
@@ -1611,8 +1618,11 @@ class Bot:
             self.apply_edits(
                 chat, edit_blocks, scope, asker, private, admin, _users(covered), state.thread
             )
-        if text:
-            self.remember(chat, covered, text)
+        # with `answer_scope: all` a reaction or silence answers too, so an edit of that line
+        # is checked against it instead of coming back as a new message
+        stand_in = f"(reaction {acts['react']})" if acts["react"] else "(no reply)"
+        if text or s.answer_scope == "all":
+            self.remember(chat, covered, text or stand_in)
         taken = {x["id"] for x in covered}
         self.kv.update_json(key, lambda cur: [x for x in cur or [] if x["id"] not in taken] or None)
         if seen:
@@ -2813,6 +2823,8 @@ class Bot:
             return
         key = f"pending:{chat_id}"
         found: list[dict] = []
+        # with `answer_scope: all` an edit can add or remove a mention: the line is built anew
+        fresh = self.addressed(msg, text, private, p)
 
         def swap(cur):
             out = []
@@ -2825,6 +2837,9 @@ class Bot:
                             head = f"{p.name}: "
                         x = {**x, "content": head + body, "body": body}
                         x["ts"] = int(self.now().timestamp())
+                    marked = x["content"].startswith(NO_MENTION)
+                    if fresh and (marked or fresh.startswith(NO_MENTION)) and x["content"] != fresh:
+                        x = {**x, "content": fresh, "body": body}
                 out.append(x)
             return out or None
 

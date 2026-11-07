@@ -212,3 +212,82 @@ def test_asked_mode_keeps_unmentioned_lines_as_context_only(make_bot):
     rules = " ".join(call["turn"]["rules"].split())
     assert "[no mention]" not in rules and "[[no reply]]" not in rules
     assert '"[not to you]" are what people say to each other: context only' in rules
+
+
+def test_more_than_ten_lines_without_a_mention_all_wait_for_the_next_turn(make_bot):
+    bot = make_bot(settings=ALL)
+    bot.worker.stop()  # a long turn or a rest for capacity: the lines pile up
+    for i in range(12):
+        bot.handle({"message": message(f"linea {i}")})
+    pending = bot.kv.get_json(f"pending:{GROUP}")
+    assert [x["body"] for x in pending] == [f"linea {i}" for i in range(12)]
+
+
+def test_the_rules_say_principle_1_covers_every_message_of_a_person(make_bot):
+    bot = make_bot(settings=ALL)
+    say(bot, "hola")
+    rules = " ".join(_rules(bot).split())
+    assert "what is addressed to you (principle 1) is every message from a person" in rules
+
+
+def test_an_edit_of_a_line_answered_with_a_reaction_asks_to_check_that_answer(make_bot):
+    bot = make_bot(settings=ALL)
+    plugin(bot).REPLIES[:] = ["```telegram\nreact: 👍\n```", "Corregido."]
+    msg = say(bot, "he tomado 1 ibuprofeno")
+    bot.handle({"edited_message": {**msg, "text": "he tomado 1 ibuprofeno 600"}})
+    bot.join_idle()
+    [last] = contents(plugin(bot).CALLS[-1])
+    assert last.startswith("[Lucía edited a message you already answered.")
+    assert "Your answer was: (reaction 👍)" in last
+
+
+def test_an_edit_of_a_line_answered_with_silence_asks_to_check_that_answer(make_bot):
+    bot = make_bot(settings=ALL)
+    plugin(bot).REPLIES[:] = ["[[no reply]]", "Vale."]
+    msg = say(bot, "¿vienes?", user=PABLO)
+    bot.handle({"edited_message": {**msg, "text": "¿vienes a cenar?"}})
+    bot.join_idle()
+    [last] = contents(plugin(bot).CALLS[-1])
+    assert last.startswith("[Pablo edited a message you already answered.")
+    assert "Your answer was: (no reply)" in last
+
+
+def test_an_edit_that_adds_a_mention_to_a_queued_line_drops_its_mark(make_bot):
+    bot = make_bot(settings=ALL)
+    bot.worker.stop()
+    msg = message("quedan 8 raciones")
+    bot.handle({"message": msg})
+    edited = message("quedan 8 raciones, ¿cuántas para mañana?", mention=True)
+    edited["message_id"] = msg["message_id"]
+    bot.handle({"edited_message": edited})
+    [line] = bot.kv.get_json(f"pending:{GROUP}")
+    assert line["content"] == "Lucía: quedan 8 raciones, ¿cuántas para mañana?"
+
+
+def test_an_edit_that_only_adds_a_mention_drops_the_mark_too(make_bot):
+    bot = make_bot(settings=ALL)
+    bot.worker.stop()
+    msg = message("quedan 8 raciones")
+    bot.handle({"message": msg})
+    edited = message("quedan 8 raciones", mention=True)
+    edited["message_id"] = msg["message_id"]
+    bot.handle({"edited_message": edited})
+    [line] = bot.kv.get_json(f"pending:{GROUP}")
+    assert line["content"] == "Lucía: quedan 8 raciones"
+
+
+def test_a_marker_wrapped_in_formatting_sends_nothing(make_bot):
+    bot = make_bot(settings=ALL)
+    plugin(bot).REPLIES[:] = ["`[[no reply]]`", "**[[no reply]]**", "[[no reply]]."]
+    for word in ("uno", "dos", "tres"):
+        say(bot, word, user=PABLO)
+    assert len(plugin(bot).CALLS) == 3
+    assert sent(bot) == []
+
+
+def test_lines_without_a_mention_show_no_typing(make_bot):
+    bot = make_bot(settings=ALL)
+    say(bot, "¿vienes a cenar?", user=PABLO)
+    assert bot.tg.of("sendChatAction") == []
+    say(bot, "¿qué tomo?", mention=True)
+    assert len(bot.tg.of("sendChatAction")) == 1

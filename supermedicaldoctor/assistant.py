@@ -53,7 +53,9 @@ REACH_ASKED = (
 )
 REACH_ALL = (
     "In the group, every message from a person reaches you and is meant for you, with or without a "
-    "mention; every voice note, photo and file reaches you too. In a private chat everything does."
+    "mention; every voice note, photo and file reaches you too. In a private chat everything does. "
+    "So in this bot what is addressed to you (principle 1) is every message from a person; only "
+    'lines marked "[not to you]" are context you never answer.'
 )
 UNADDRESSED_ASKED = (
     '- Lines starting with "[not to you]" are what people say to each other: context only.'

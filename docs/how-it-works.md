@@ -27,7 +27,11 @@ never knows which provider answers.
   noted) unless it asks something or changes what someone has to do, and to send nothing when it is
   talk between people. A mention or a reply still gets words. Texts from a bot, a channel or anyone
   outside `people` never start a turn; they stay context marked `[not to you]`. `answer_scope: all`
-  keeps that context without `history_scope: all`.
+  keeps that context without `history_scope: all`. The queue keeps the newest 50 lines instead
+  of 10, so a long turn or a wait for capacity drops none of them. A turn made only of
+  `[no mention]` lines shows no "typing", since it may end in nothing. A line answered with only a
+  reaction or with nothing is still remembered as answered, so an edit of it asks the assistant to
+  check that answer instead of arriving as a new message.
 - In a private chat everything reaches it.
 - The bot must read every group message: make it an administrator of the group, or turn its
   privacy mode off in BotFather (then remove it from the group and add it again). Without one of
