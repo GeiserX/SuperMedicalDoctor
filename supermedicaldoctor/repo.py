@@ -74,8 +74,9 @@ class KV:
     `said:<chat>` (the last answered messages, so an edit can be compared), `options:<chat>`
     (the choices under recent answers), `remind:<chat>` (offers waiting for a tap), `ctx:<chat>`
     (the last chat log row a turn took as context), `sent:<person>:<appointment>:<kind>` (a
-    reminder the app posted by itself), `undo:<chat>` (the record commits made from that chat)
-    and `own:<chat>` (the ids of the messages the bot sent there, so it can edit them); any
+    reminder the app posted by itself), `undo:<chat>` (the record commits made from that chat),
+    `own:<chat>` (the ids of the messages the bot sent there, so it can edit them) and
+    `eyes:<chat>` (the ids of the messages that carry the bot's 👀, so none gets it twice); any
     other key is refused.
 
     Two more tables: `chat`, the chat log (every message of the chats the bot serves that it
