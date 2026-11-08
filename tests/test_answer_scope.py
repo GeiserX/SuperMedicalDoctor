@@ -256,6 +256,32 @@ def test_a_reply_to_the_bot_answered_with_nothing_gets_words(make_bot):
     assert msg["message_id"] == sent(bot)[0]["reply_parameters"]["message_id"]
 
 
+def test_a_reminders_only_answer_shows_its_offer_and_no_read_mark(make_bot):
+    bot = make_bot(settings=ALL)
+    plugin(bot).REPLIES[:] = ["```reminders\n- 2027-03-11 08:00 | Toma el omega | pablo\n```"]
+    say(bot, "a Pablo le toca el omega mañana a las 8", mention=True)
+    [offer] = sent(bot)
+    assert "¿quieres que te lo recuerde?" in offer["text"]
+    assert bot.tg.of("setMessageReaction") == []
+
+
+def test_an_edit_that_adds_a_mention_to_a_queued_line_asks_for_words(make_bot):
+    bot = make_bot(settings=ALL)
+    bot.worker.stop()
+    msg = message("quedan 8 raciones")
+    bot.handle({"message": msg})
+    edited = message("quedan 8 raciones, ¿cuántas para mañana?", mention=True)
+    edited["message_id"] = msg["message_id"]
+    bot.handle({"edited_message": edited})
+    [line] = bot.kv.get_json(f"pending:{GROUP}")
+    assert line.get("words") is True
+    loose = message("quedan 8 raciones")
+    loose["message_id"] = msg["message_id"]
+    bot.handle({"edited_message": loose})  # and the mention taken out again
+    [line] = bot.kv.get_json(f"pending:{GROUP}")
+    assert line["content"].startswith("[no mention] ") and line.get("words") is False
+
+
 def test_a_voice_note_answered_with_nothing_gets_words(make_bot):
     bot = make_bot(settings=ALL)
     plugin(bot).VOICES[:] = ["me duele la cabeza"]

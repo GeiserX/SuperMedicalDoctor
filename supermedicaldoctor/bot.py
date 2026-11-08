@@ -1640,9 +1640,6 @@ class Bot:
             self.apply_edits(
                 chat, edit_blocks, scope, asker, private, admin, _users(covered), state.thread
             )
-        if watch:
-            shown = shown or self._shown.n > 0
-            self.acknowledge(chat, covered, react, shown, state.thread)
         # with `answer_scope: all` a reaction or silence answers too, so an edit of that line
         # is checked against it instead of coming back as a new message
         react = react or acts["react"]
@@ -1655,6 +1652,9 @@ class Bot:
             self.kv.set(f"ctx:{chat}", str(max(r["id"] for r in seen)))
         if listed:
             self.offer_reminders(chat, listed, covered, reply_to, scope, state.thread)
+        if watch:  # after everything the answer posts, the reminder offers included
+            shown = shown or self._shown.n > 0
+            self.acknowledge(chat, covered, react, shown, state.thread)
         missed = len(state.pulled) - len(handed)
         if handed or missed:
             log.info("handed over: covered=%d next_turn=%d", len(handed), missed)
@@ -2866,6 +2866,8 @@ class Bot:
                     marked = x["content"].startswith(NO_MENTION)
                     if fresh and (marked or fresh.startswith(NO_MENTION)) and x["content"] != fresh:
                         x = {**x, "content": fresh, "body": body}
+                        if self.settings.answer_scope == "all" and not x.get("private"):
+                            x["words"] = not fresh.startswith(NO_MENTION)
                 out.append(x)
             return out or None
 
