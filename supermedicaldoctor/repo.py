@@ -53,6 +53,7 @@ KV_PREFIXES = (
     "sent:",
     "undo:",
     "own:",
+    "eyes:",
 )
 CHAT_SCHEMA = """
 CREATE TABLE IF NOT EXISTS chat (

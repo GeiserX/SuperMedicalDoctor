@@ -73,7 +73,7 @@ def test_the_rules_say_how_to_answer_a_line_without_a_mention(make_bot):
     assert "answer with only a reaction" in rules and "react: 👍" in rules
     assert "say briefly that you took note" in rules
     assert "your whole answer is [[no reply]]" in rules
-    assert "the bot then marks their messages with 👀 (read)" in rules
+    assert "their messages keep the 👀 (read) the bot put on them when it started reading" in rules
     assert "a 👍 means noted" in rules
     assert "sends nothing" not in rules
     assert "a mention of you or a reply to you always gets an answer in words" in rules.lower()
@@ -147,7 +147,8 @@ def test_a_reaction_only_answer_reacts_to_every_line_of_the_burst_and_sends_no_t
     plugin(bot).REPLIES[:] = ["```telegram\nreact: 👌\n```"]
     _burst(bot, first, second)
     assert len(plugin(bot).CALLS) == 1
-    assert _reactions(bot) == [(first["message_id"], "👌"), (second["message_id"], "👌")]
+    a, b = first["message_id"], second["message_id"]
+    assert _reactions(bot) == [(a, "👀"), (b, "👀"), (a, "👌"), (b, "👌")]  # replaces the 👀
     assert {r["chat_id"] for r in bot.tg.of("setMessageReaction")} == {GROUP}
     assert sent(bot) == []
 
@@ -163,7 +164,8 @@ def test_a_reaction_only_answer_reacts_to_a_line_that_joined_the_running_turn(ma
 
     plugin(bot).REPLIES[:] = [handover]
     msg = say(bot, "una cosa")
-    assert _reactions(bot) == [(msg["message_id"], "👍"), (late["message_id"], "👍")]
+    a, b = msg["message_id"], late["message_id"]
+    assert _reactions(bot) == [(a, "👀"), (b, "👀"), (a, "👍"), (b, "👍")]
     assert sent(bot) == []
 
 
@@ -204,35 +206,47 @@ def test_a_block_that_changes_nothing_marks_the_line_read(make_bot):
     assert _reactions(bot) == [(msg["message_id"], "👀")]
 
 
-def test_a_text_answer_adds_no_reaction(make_bot):
+def test_a_text_answer_leaves_the_start_mark_and_adds_no_reaction(make_bot):
     bot = make_bot(settings=ALL)
     first, second = message("quedan 10 raciones"), message("¿cuántas para mañana?")
     plugin(bot).REPLIES[:] = ["Para mañana, 4."]
     _burst(bot, first, second)
     assert bot.tg.texts() == ["Para mañana, 4."]
-    assert bot.tg.of("setMessageReaction") == []
+    assert _reactions(bot) == [(first["message_id"], "👀"), (second["message_id"], "👀")]
 
 
 def test_a_refused_read_mark_falls_back_to_a_thumb_once_and_never_to_text(make_bot, caplog):
     bot = make_bot(settings=ALL)
     caplog.set_level("INFO")
     first, second = message("uno"), message("dos")
-    bot.tg.fail_next("setMessageReaction", 400, "Bad Request: REACTION_INVALID")
-    bot.tg.fail_next("setMessageReaction", 400, "Bad Request: REACTION_INVALID")
-    plugin(bot).REPLIES[:] = ["[[no reply]]"]
+    bot.tg.fail_next("setMessageReaction", 400, "Bad Request: REACTION_INVALID")  # a's start 👀
+
+    def silent(turn):
+        bot.eyes.join_idle()
+        bot.tg.fail_next("setMessageReaction", 400, "Bad Request: REACTION_INVALID")
+        return "[[no reply]]"
+
+    plugin(bot).REPLIES[:] = [silent]
     _burst(bot, first, second)
     a, b = first["message_id"], second["message_id"]
-    assert _reactions(bot) == [(a, "👀"), (a, "👍"), (b, "👀")]  # 👍 once, then the next one
+    # b keeps its start 👀; a, refused at the start, is tried again at the end, then 👍 once
+    assert _reactions(bot) == [(a, "👀"), (b, "👀"), (a, "👀"), (a, "👍")]
     assert sent(bot) == []
     assert caplog.text.count("reaction failed") == 2
 
 
 def test_a_refused_reaction_falls_back_to_a_thumb_and_never_to_text(make_bot):
     bot = make_bot(settings=ALL)
-    bot.tg.fail_next("setMessageReaction", 400, "Bad Request: REACTION_INVALID")
-    plugin(bot).REPLIES[:] = ["```telegram\nreact: 🙏\n```"]
+
+    def thanks(turn):
+        bot.eyes.join_idle()
+        bot.tg.fail_next("setMessageReaction", 400, "Bad Request: REACTION_INVALID")
+        return "```telegram\nreact: 🙏\n```"
+
+    plugin(bot).REPLIES[:] = [thanks]
     msg = say(bot, "gracias")
-    assert _reactions(bot) == [(msg["message_id"], "🙏"), (msg["message_id"], "👍")]
+    m = msg["message_id"]
+    assert _reactions(bot) == [(m, "👀"), (m, "🙏"), (m, "👍")]
     assert sent(bot) == []
 
 
@@ -244,7 +258,8 @@ def test_a_mention_answered_with_nothing_gets_words_never_only_a_read_mark(make_
     [words] = sent(bot)
     assert words["text"] == bot.t("no_answer")
     assert words["reply_parameters"]["message_id"] == asked["message_id"]
-    assert _reactions(bot) == [(loose["message_id"], "👀")]  # the mention gets no 👀
+    # both keep the 👀 of the start; the mention gets words on top, never only the 👀
+    assert _reactions(bot) == [(loose["message_id"], "👀"), (asked["message_id"], "👀")]
 
 
 def test_a_reply_to_the_bot_answered_with_nothing_gets_words(make_bot):
@@ -252,17 +267,17 @@ def test_a_reply_to_the_bot_answered_with_nothing_gets_words(make_bot):
     plugin(bot).REPLIES[:] = [{"text": "", "kept": True}]
     msg = say(bot, "sí", reply=True)
     assert [m["text"] for m in sent(bot)] == [bot.t("no_answer")]
-    assert bot.tg.of("setMessageReaction") == []
+    assert _reactions(bot) == [(msg["message_id"], "👀")]
     assert msg["message_id"] == sent(bot)[0]["reply_parameters"]["message_id"]
 
 
 def test_a_reminders_only_answer_shows_its_offer_and_no_read_mark(make_bot):
     bot = make_bot(settings=ALL)
     plugin(bot).REPLIES[:] = ["```reminders\n- 2027-03-11 08:00 | Toma el omega | pablo\n```"]
-    say(bot, "a Pablo le toca el omega mañana a las 8", mention=True)
+    msg = say(bot, "a Pablo le toca el omega mañana a las 8", mention=True)
     [offer] = sent(bot)
     assert "¿quieres que te lo recuerde?" in offer["text"]
-    assert bot.tg.of("setMessageReaction") == []
+    assert _reactions(bot) == [(msg["message_id"], "👀")]  # the start's, nothing more
 
 
 def test_an_edit_that_adds_a_mention_to_a_queued_line_asks_for_words(make_bot):
@@ -293,10 +308,10 @@ def test_a_voice_note_answered_with_nothing_gets_words(make_bot):
     bot.handle({"message": msg})
     bot.join_idle()
     assert bot.tg.texts()[-1] == bot.t("no_answer")
-    assert bot.tg.of("setMessageReaction") == []
+    assert _reactions(bot) == [(msg["message_id"], "👀")]  # on the note, not on the echo
 
 
-def test_a_failed_turn_marks_nothing_and_its_lines_go_with_the_next_turn(make_bot):
+def test_a_failed_turn_keeps_its_marks_and_its_lines_go_with_the_next_turn(make_bot):
     bot = make_bot(settings=ALL)
     plugin(bot).REPLIES[:] = [
         {"text": "[[no reply]]", "kept": False},  # the provider lost the turn
@@ -304,9 +319,9 @@ def test_a_failed_turn_marks_nothing_and_its_lines_go_with_the_next_turn(make_bo
         "[[no reply]]",
     ]
     first = say(bot, "uno")
-    assert bot.tg.of("setMessageReaction") == []
+    assert _reactions(bot) == [(first["message_id"], "👀")]
     second = say(bot, "dos")
-    assert bot.tg.of("setMessageReaction") == []
+    assert _reactions(bot) == [(first["message_id"], "👀"), (second["message_id"], "👀")]
     assert [x["body"] for x in bot.kv.get_json(f"pending:{GROUP}")] == ["uno", "dos"]
     third = say(bot, "tres")
     assert contents(plugin(bot).CALLS[-1]) == [
@@ -318,12 +333,12 @@ def test_a_failed_turn_marks_nothing_and_its_lines_go_with_the_next_turn(make_bo
     assert bot.kv.get_json(f"pending:{GROUP}") is None
 
 
-def test_asked_mode_never_marks_a_line_read(make_bot):
+def test_asked_mode_marks_a_line_only_when_its_turn_starts(make_bot):
     bot = make_bot()  # answer_scope: asked
     plugin(bot).REPLIES[:] = ["[[no reply]]", {"text": "", "kept": True}]
-    say(bot, "¿qué tomo?", mention=True)
-    say(bot, "¿y ahora?", mention=True)
-    assert bot.tg.of("setMessageReaction") == []
+    first = say(bot, "¿qué tomo?", mention=True)
+    second = say(bot, "¿y ahora?", mention=True)
+    assert _reactions(bot) == [(first["message_id"], "👀"), (second["message_id"], "👀")]
     assert sent(bot) == []
 
 
@@ -336,7 +351,11 @@ def test_the_no_reply_marker_never_reaches_the_chat(make_bot):
     say(bot, "mañana no ceno")
     say(bot, "vale")
     assert bot.tg.texts() == ["Anotado."]
-    assert [r["reaction"][0]["emoji"] for r in bot.tg.of("setMessageReaction")] == ["👌"]
+    assert [r["reaction"][0]["emoji"] for r in bot.tg.of("setMessageReaction")] == [
+        "👀",
+        "👀",
+        "👌",
+    ]
 
 
 def test_strip_no_reply():
@@ -479,20 +498,22 @@ def test_a_photo_that_mentions_the_bot_answered_with_nothing_gets_words(make_bot
     bot = make_bot(settings=ALL)
     bot.tg.files["ph"] = b"\xff\xd8 jpeg"
     plugin(bot).REPLIES[:] = ["[[no reply]]"]
-    bot.handle({"message": _photo("¿qué es esto?", mention=True)})
+    msg = _photo("¿qué es esto?", mention=True)
+    bot.handle({"message": msg})
     bot.join_idle()
     assert bot.tg.texts() == [bot.t("no_answer")]
-    assert bot.tg.of("setMessageReaction") == []
+    assert _reactions(bot) == [(msg["message_id"], "👀")]
 
 
 def test_a_photo_that_replies_to_the_bot_answered_with_nothing_gets_words(make_bot):
     bot = make_bot(settings=ALL)
     bot.tg.files["ph"] = b"\xff\xd8 jpeg"
     plugin(bot).REPLIES[:] = [{"text": "", "kept": True}]
-    bot.handle({"message": _photo("esta", reply=True)})
+    msg = _photo("esta", reply=True)
+    bot.handle({"message": msg})
     bot.join_idle()
     assert bot.tg.texts() == [bot.t("no_answer")]
-    assert bot.tg.of("setMessageReaction") == []
+    assert _reactions(bot) == [(msg["message_id"], "👀")]
 
 
 def test_a_loose_photo_answered_with_nothing_is_marked_read(make_bot):
@@ -512,7 +533,7 @@ def test_a_mention_answered_with_a_reaction_only_gets_that_reaction(make_bot):
     plugin(bot).REPLIES[:] = ["```telegram\nreact: 👍\n```"]
     msg = say(bot, "gracias", mention=True)
     assert sent(bot) == []
-    assert _reactions(bot) == [(msg["message_id"], "👍")]
+    assert _reactions(bot) == [(msg["message_id"], "👀"), (msg["message_id"], "👍")]
 
 
 def test_a_block_that_changes_nothing_with_a_sticker_that_cannot_go_marks_the_line_read(make_bot):
