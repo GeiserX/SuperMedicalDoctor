@@ -14,7 +14,9 @@ handed to the plugin (`turn["incoming"]`); the answer names what it covered, and
 the next turn. An edited message is handled by where it is: still queued, its new wording goes; in
 the running turn, a correction joins it; already answered, a new turn checks that answer; an edit
 that now addresses the bot is a new message. With `answer_scope: all` a person's group text
-addresses the bot even without a mention; it goes in marked «[no mention]».
+addresses the bot even without a mention; it goes in marked «[no mention]». In every chat a
+person's message gets 👀 the moment a turn takes it, on a thread of its own the turn never waits
+for.
 
 Scope is structural: a private chat's turn carries only that person's data, a group turn
 everyone's. Before every turn the data repository is pulled and the listed files of other
@@ -131,9 +133,12 @@ NOT_TO_YOU = "[not to you] "  # the mark of a group line that did not call the b
 # With `answer_scope: all` a group line without a mention or a reply starts a turn too, marked so
 # the assistant knows nobody asked it anything directly
 NO_MENTION = "[no mention] "
-# In such a group a person's message is never left with nothing to show for it: an answer that
-# posts nothing marks the turn's messages «read», and a reaction Telegram refuses falls back to 👍
+# Every chat: a person's message gets 👀 the moment a turn takes it, so people see it is being
+# worked on. In an `answer_scope: all` group a message is never left with nothing to show for it:
+# an answer that posts nothing keeps the 👀, and a reaction Telegram refuses falls back to 👍
 READ, NOTED = "👀", "👍"
+EYES_KEEP = 200  # ids of the messages that carry the bot's 👀, remembered per chat
+EYES_WAIT_S = 20.0  # the end of a turn waits this long for its start 👀 before it reacts
 OFFER_GONE = "remind_timeout"  # the label an offer's buttons give way to when nobody answered
 REMIND_TTL_S = 1800  # an offered reminder can be tapped this long; then nothing is done
 REMIND_DAYS = 60  # the furthest ahead a reminder may be
@@ -360,6 +365,7 @@ class Bot:
         self.asks: dict[str, dict] = {}
         self.hearer = Worker(self._hear_chat, name="smd-hear")
         self.side = Worker(lambda job: job(), name="smd-asks")
+        self.eyes = Worker(lambda job: job(), name="smd-eyes")  # the 👀 a turn starts with
 
     def start(self) -> None:
         """`getMe`, then whether the bot is an administrator of the group: Telegram delivers
@@ -430,11 +436,12 @@ class Bot:
         self.worker.stop()
         self.later.stop()
         self.side.stop()
+        self.eyes.stop()
         self.kv.close()
 
     def join_idle(self, timeout: float = 10.0) -> None:
         deadline = time.monotonic() + timeout
-        workers = (self.hearer, self.worker, self.side)
+        workers = (self.hearer, self.worker, self.side, self.eyes)
         while not all(w.idle() for w in workers):
             for w in workers:
                 w.join_idle(max(0.01, deadline - time.monotonic()))
@@ -955,6 +962,9 @@ class Bot:
             self._newest[chat] = self.clock()
             if "voice" in line:
                 self._voicing.setdefault(chat, {})[line["id"]] = self.clock()
+            running = chat in self._running
+        if running:  # it joins the running turn, or goes with the next one: either way, taken
+            self.eye(chat, [line])
         if "voice" in line:
             self.hearer.submit(chat)
         else:
@@ -1429,6 +1439,7 @@ class Bot:
             )
             state.grants = [_grant(x["grant"]) for x in lines if isinstance(x.get("grant"), dict)]
             self._running[chat] = state
+        self.eye(chat, lines)  # before anything else the turn does, and never waited on
         try:
             self._converse(chat, key, lines, state)
         finally:
@@ -1634,6 +1645,8 @@ class Bot:
         react = None
         if watch and not text:  # a reaction alone goes on every message the turn covered
             react, acts = acts["react"], {**acts, "react": None}
+        if react or acts["react"]:
+            self.settle_eyes()  # the start 👀 lands first, so the answer's reaction replaces it
         shown = self.act(
             chat, acts, _mid(covered[-1]), bool(text or others), reply_to, state.thread
         )
@@ -3147,6 +3160,7 @@ class Bot:
                     message_id=to,
                     reaction=[{"type": "emoji", "emoji": acts["react"]}],
                 )
+                self._reacted(chat, to, acts["react"])
                 return True
             except TelegramError as e:
                 log.info("reaction failed: %s", safe(e))
@@ -3170,9 +3184,9 @@ class Bot:
         """`answer_scope: all` in the group: no person's message of the turn is left with
         nothing to show for it. A reaction-only answer goes on every one of them. An answer that
         put nothing in the chat (the assistant's «[[no reply]]», an empty answer, a block that
-        changed nothing) marks them read (👀); a mention, a reply to the bot or a voice note gets
-        words instead, never only 👀 (a 👀 only when those words cannot go out). A reaction
-        counts as an answer for a mention too."""
+        changed nothing) leaves them read (👀, put when the turn started, tried again where it
+        was refused); a mention, a reply to the bot or a voice note gets words on top, never only
+        👀. A reaction counts as an answer for a mention too."""
         lines = [x for x in covered if not x.get("tap") and isinstance(_mid(x), int)]
         if react:
             self.mark(chat, [_mid(x) for x in lines], react)
@@ -3191,8 +3205,12 @@ class Bot:
     def mark(self, chat: int, mids: Sequence[int], emoji: str) -> None:
         """Put `emoji` on each message of `mids`. One Telegram refuses (the chat's allowed
         reactions, a deleted message) gets 👍 once; then the log says so and the rest go on.
-        Never text instead."""
+        Never text instead. A 👀 the message already has from the turn's start is left as it is."""
+        self.settle_eyes()
+        eyed = self._eyed(chat) if emoji == READ else set()
         for mid in dict.fromkeys(mids):  # an edit of a line in the same turn shares its id
+            if mid in eyed:
+                continue
             for e in dict.fromkeys((emoji, NOTED)):
                 try:
                     self.tg.call(
@@ -3201,9 +3219,80 @@ class Bot:
                         message_id=mid,
                         reaction=[{"type": "emoji", "emoji": e}],
                     )
+                    self._reacted(chat, mid, e)
                     break
                 except TelegramError as err:
                     log.info("reaction failed: %s", safe(err))
+
+    def eye(self, chat: int, lines: Sequence[Mapping]) -> None:
+        """Put 👀 on each person's message of `lines` the moment a turn takes it, in every chat,
+        so people see it is being worked on. A tap, a line without a message of its own and a
+        message that already carries the bot's 👀 get none. It runs on its own thread: the turn
+        never waits for it, a failure is only logged, and nothing falls back to 👍 (which means
+        noted) or to text."""
+        try:
+            mids = [_mid(x) for x in lines if not x.get("tap")]
+            new = self._eyes(chat, add=[m for m in mids if isinstance(m, int)])
+        except Exception as e:  # noqa: BLE001 - a 👀 must never stop a turn
+            log.warning("start reaction not queued: %s", safe(e))
+            return
+        if new:
+            self.eyes.submit(lambda: self._put_eyes(chat, new))
+
+    def _put_eyes(self, chat: int, mids: Sequence[int]) -> None:
+        for mid in mids:
+            try:
+                self.tg.call(
+                    "setMessageReaction",
+                    chat_id=chat,
+                    message_id=mid,
+                    reaction=[{"type": "emoji", "emoji": READ}],
+                )
+            except Exception as e:  # noqa: BLE001 - logged, and the turn goes on
+                log.info("start reaction failed: %s", safe(e))
+                self._eyes(chat, drop={mid})  # the end of the turn may try again, with its 👍
+
+    def settle_eyes(self) -> None:
+        """Wait (a little) for the 👀 queued at the start, so a reaction meant to replace it is
+        not overwritten by it, and a refused one is known before the end of the turn marks."""
+        try:
+            self.eyes.join_idle(EYES_WAIT_S)
+        except TimeoutError:
+            log.info("start reactions still pending")
+
+    def _reacted(self, chat: int, mid: object, emoji: str) -> None:
+        """The bot's reaction on `mid` is now `emoji` (Telegram keeps one): note whether it is
+        the 👀."""
+        if not isinstance(mid, int):
+            return
+        if emoji == READ:
+            self._eyes(chat, add=[mid])
+        else:
+            self._eyes(chat, drop={mid})
+
+    def _eyed(self, chat: int) -> set:
+        """The ids of `chat`'s messages that carry the bot's 👀."""
+        return set(self.kv.get_json(f"eyes:{chat}", []) or [])
+
+    def _eyes(
+        self, chat: int, add: Sequence[int] = (), drop: set | frozenset = frozenset()
+    ) -> list[int]:
+        """Note `add` as carrying the bot's 👀 and `drop` as not; the ids of `add` that were not
+        noted yet. One step, so two threads never put 👀 on the same message."""
+        new: list[int] = []
+        if not add and not drop:
+            return new
+
+        def put(cur):
+            cur = [m for m in cur or [] if m not in drop]
+            for m in dict.fromkeys(add):
+                if m not in cur:
+                    cur.append(m)
+                    new.append(m)
+            return cur[-EYES_KEEP:] or None
+
+        self.kv.update_json(f"eyes:{chat}", put, [])
+        return new
 
     def sticker(self, emoji: str | None) -> str | None:
         """The file_id of the settings' sticker set for `emoji`, read once per set, or None."""

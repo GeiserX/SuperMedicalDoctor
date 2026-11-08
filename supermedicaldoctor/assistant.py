@@ -60,7 +60,7 @@ REACH_ALL = (
 UNADDRESSED_ASKED = (
     '- Lines starting with "[not to you]" are what people say to each other: context only.'
 )
-NO_REPLY = "[[no reply]]"  # the whole answer when there is nothing to say: the bot marks 👀
+NO_REPLY = "[[no reply]]"  # the whole answer when there is nothing to say: the 👀 stays
 UNADDRESSED_ALL = f"""\
 - Lines starting with "[no mention]" did not mention you or reply to you: the household telling
   you something, or talking among themselves. Take in what they tell you and act on it as you
@@ -68,8 +68,8 @@ UNADDRESSED_ALL = f"""\
   reaction (react: 👍 in the telegram block, for "seen and noted"), unless the line asks you
   something or changes what someone has to do: then answer in words, and say briefly that you
   took note. When it is talk between people with nothing for you, your whole answer is
-  {NO_REPLY}: the bot then marks their messages with 👀 (read), so you never need words just to
-  acknowledge, and a 👍 means noted. Never put {NO_REPLY} beside words.
+  {NO_REPLY}: their messages keep the 👀 (read) the bot put on them when it started reading, so
+  you never need words just to acknowledge, and a 👍 means noted. Never put {NO_REPLY} beside words.
 - A mention of you or a reply to you always gets an answer in words.
 - Lines starting with "[not to you]" are from someone you do not answer: context only."""
 _NO_REPLY = re.compile(r"\[\[\s*no[\s_-]*reply\s*\]\]", re.IGNORECASE)

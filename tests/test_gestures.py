@@ -97,7 +97,8 @@ def test_a_reaction_alone_says_nothing(make_bot):
     bot = make_bot()
     plugin(bot).REPLIES[:] = ["```telegram\nreact: 👍\n```"]
     msg = say(bot, "gracias", mention=True)
-    [r] = bot.tg.of("setMessageReaction")
+    [eyes, r] = bot.tg.of("setMessageReaction")  # the 👀 of the turn's start, then the answer
+    assert eyes["reaction"] == [{"type": "emoji", "emoji": "👀"}]
     assert (r["chat_id"], r["message_id"]) == (GROUP, msg["message_id"])
     assert r["reaction"] == [{"type": "emoji", "emoji": "👍"}]
     assert not any("👍" in p["text"] or "react" in p["text"] for p in sent(bot))
@@ -105,8 +106,13 @@ def test_a_reaction_alone_says_nothing(make_bot):
 
 def test_a_failed_reaction_with_no_text_says_the_emoji(make_bot):
     bot = make_bot()
-    bot.tg.fail_next("setMessageReaction", 400, "Bad Request: REACTION_INVALID")
-    plugin(bot).REPLIES[:] = ["```telegram\nreact: 🙏\n```"]
+
+    def thanks(turn):
+        bot.eyes.join_idle()  # the start 👀 is in; the answer's reaction is the one refused
+        bot.tg.fail_next("setMessageReaction", 400, "Bad Request: REACTION_INVALID")
+        return "```telegram\nreact: 🙏\n```"
+
+    plugin(bot).REPLIES[:] = [thanks]
     say(bot, "gracias", mention=True)
     assert last_sent(bot)["text"] == "🙏"
 
