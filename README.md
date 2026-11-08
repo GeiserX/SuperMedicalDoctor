@@ -23,7 +23,7 @@ SuperMedicalDoctor is a household doctor assistant that lives in a Telegram grou
 - Offers instead of acting: a new appointment for the person's calendar, a reminder here or in the calendar. Anything that leaves the chat waits for that person's Aprobar.
 - Writes a diet-relevant export for a meal planner: allergies, intolerances, diet rules, the medicines taken and fasting windows, nothing else.
 - One answer per burst of messages, edits taken into account, every voice note heard, Sí/No and option buttons, forum topics followed.
-- In a group built around the bot, `answer_scope: all` lets people talk to it without a mention: it takes in what they say, shows it read with a reaction, answers in words when something is asked, and stays quiet when people talk among themselves.
+- In a group built around the bot, `answer_scope: all` lets people talk to it without a mention: it takes in what they say, shows it read with a reaction, answers in words when something is asked, and marks the messages read (👀) when people talk among themselves. No message is left without a sign it was read.
 - `/citas`, `/medicacion`, `/suplementos`, `/recordatorios` and `/deshacer` work without any AI.
 - English and Spanish ship; the assistant reads the shared assistant principles first.
 

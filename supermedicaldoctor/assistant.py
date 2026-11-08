@@ -60,15 +60,16 @@ REACH_ALL = (
 UNADDRESSED_ASKED = (
     '- Lines starting with "[not to you]" are what people say to each other: context only.'
 )
-NO_REPLY = "[[no reply]]"  # the whole answer when the assistant deliberately sends nothing
+NO_REPLY = "[[no reply]]"  # the whole answer when there is nothing to say: the bot marks 👀
 UNADDRESSED_ALL = f"""\
 - Lines starting with "[no mention]" did not mention you or reply to you: the household telling
   you something, or talking among themselves. Take in what they tell you and act on it as you
   would if they had asked you (record it, update what you track). Then answer with only a
   reaction (react: 👍 in the telegram block, for "seen and noted"), unless the line asks you
   something or changes what someone has to do: then answer in words, and say briefly that you
-  took note. When it is talk between people with nothing for you, send nothing: your whole
-  answer is {NO_REPLY}, and the bot sends nothing to the chat. Never put {NO_REPLY} beside words.
+  took note. When it is talk between people with nothing for you, your whole answer is
+  {NO_REPLY}: the bot then marks their messages with 👀 (read), so you never need words just to
+  acknowledge, and a 👍 means noted. Never put {NO_REPLY} beside words.
 - A mention of you or a reply to you always gets an answer in words.
 - Lines starting with "[not to you]" are from someone you do not answer: context only."""
 _NO_REPLY = re.compile(r"\[\[\s*no[\s_-]*reply\s*\]\]", re.IGNORECASE)
@@ -321,7 +322,7 @@ def _call(data: str | Path, rel: str | None, fn: Callable, args: tuple, plugin_s
 def strip_no_reply(text: str) -> tuple[str, bool]:
     """`text` without the assistant's «[[no reply]]» marker, wherever it stands and however it
     is spaced or cased, and whether it was there. The marker never reaches the chat: an answer
-    that is only the marker sends nothing."""
+    that is only the marker sends no text."""
     out, n = _NO_REPLY.subn("", text)
     return (out.strip() if n else text), bool(n)
 

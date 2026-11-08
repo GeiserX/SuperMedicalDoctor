@@ -24,14 +24,25 @@ never knows which provider answers.
   or a reply to the bot goes in like an addressed one (same burst, same joining of a running turn,
   same edits, same queue across a restart) marked `[no mention]`. The rules tell the assistant to
   take in what such a line says and act on it, then answer with only a reaction (👍, seen and
-  noted) unless it asks something or changes what someone has to do, and to send nothing when it is
-  talk between people. A mention or a reply still gets words. Texts from a bot, a channel or anyone
-  outside `people` never start a turn; they stay context marked `[not to you]`. `answer_scope: all`
+  noted) unless it asks something or changes what someone has to do, and to answer `[[no reply]]`
+  when it is talk between people. A mention or a reply still gets words. Texts from a bot, a
+  channel or anyone outside `people` never start a turn; they stay context marked `[not to you]`. `answer_scope: all`
   keeps that context without `history_scope: all`. The queue keeps the newest 50 lines instead
   of 10, so a long turn or a wait for capacity drops none of them. A turn made only of
-  `[no mention]` lines shows no "typing", since it may end in nothing. A line answered with only a
+  `[no mention]` lines shows no "typing", since it may end in only a reaction. A line answered with only a
   reaction or with nothing is still remembered as answered, so an edit of it asks the assistant to
   check that answer instead of arriving as a new message.
+- With `answer_scope: all` no person's group message is left with nothing to show for it. After a
+  turn the app looks at every person's message it covered, the burst and the lines that joined it
+  while it ran. An answer with text goes out as it always did. A reaction-only answer puts that
+  emoji on every one of those messages, not only the last. An answer that put nothing in the chat
+  (`[[no reply]]`, an empty answer, a block that changed nothing, buttons with no text to carry
+  them) marks every one of them with 👀, which means "read". When Telegram refuses a reaction (the
+  chat's allowed reactions, a deleted message) the app tries 👍 once on that message, then logs it
+  and goes on; it never posts text instead. A mention, a reply to the bot or a voice note never gets
+  only 👀: when the answer put nothing in the chat, the bot says in words that no answer came and asks
+  for the question again, and the turn's other messages get 👀. A failed turn marks nothing (nothing
+  was read): its lines stay queued and go with the next turn.
 - In a private chat everything reaches it.
 - The bot must read every group message: make it an administrator of the group, or turn its
   privacy mode off in BotFather (then remove it from the group and add it again). Without one of
@@ -85,8 +96,8 @@ user id, username and calendar) and `chat_id`.
 The return value is a string or `{"text", "conversation", "kept", "covers", "options",
 "reminders", "later"}`. `kept: false` (or an exception, or the timeout) is a failed turn: nothing is
 applied and the lines go with the next one. An answer that is only `[[no reply]]` is the assistant
-choosing to say nothing: nothing goes to the chat, no error is posted, the turn counts as answered
-and its lines are not sent again. The app takes `[[no reply]]` out of any answer before it is sent,
+choosing to say nothing: no text goes to the chat, no error is posted, the turn counts as answered
+and its lines are not sent again (with `answer_scope: all` in the group they get 👀, above). The app takes `[[no reply]]` out of any answer before it is sent,
 so the marker never reaches the chat; it exists because a provider may treat an empty answer as a
 failure. An exception with a numeric `retry_after`
 (seconds) means the provider is out of capacity: the chat hears the wait once, and the lines, with
