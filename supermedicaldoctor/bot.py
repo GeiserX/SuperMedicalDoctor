@@ -131,6 +131,9 @@ NOT_TO_YOU = "[not to you] "  # the mark of a group line that did not call the b
 # With `answer_scope: all` a group line without a mention or a reply starts a turn too, marked so
 # the assistant knows nobody asked it anything directly
 NO_MENTION = "[no mention] "
+# In such a group a person's message is never left with nothing to show for it: an answer that
+# posts nothing marks the turn's messages «read», and a reaction Telegram refuses falls back to 👍
+READ, NOTED = "👀", "👍"
 OFFER_GONE = "remind_timeout"  # the label an offer's buttons give way to when nobody answered
 REMIND_TTL_S = 1800  # an offered reminder can be tapped this long; then nothing is done
 REMIND_DAYS = 60  # the furthest ahead a reminder may be
@@ -353,6 +356,7 @@ class Bot:
         self._running: dict[int, Turn] = {}
         self._resting: dict[int, float] = {}  # chat -> clock() its lines wait for (no capacity)
         self._told_busy: set[int] = set()  # chats told of the wait, until an answer goes out
+        self._shown = threading.local()  # messages a turn's answer put in its chat (`_own`)
         self.asks: dict[str, dict] = {}
         self.hearer = Worker(self._hear_chat, name="smd-hear")
         self.side = Worker(lambda job: job(), name="smd-asks")
@@ -497,6 +501,8 @@ class Bot:
         mid = sent.get("message_id") if isinstance(sent, Mapping) else None
         if isinstance(mid, int):
             self.kv.update_json(f"own:{chat}", lambda cur: [*(cur or []), mid][-OWN_KEEP:], [])
+            if getattr(self._shown, "chat", None) == chat:
+                self._shown.n += 1
 
     def thread_for(self, chat: int, thread: int | None = None) -> int | None:
         """The forum topic to post in: the one given, or `telegram.thread_id` in the group."""
@@ -814,6 +820,8 @@ class Bot:
         }
         line["who"] = p.name
         line["replied"] = self.replied(msg)
+        if self.settings.answer_scope == "all" and not line["private"]:
+            line["words"] = True  # a voice note always gets an answer in words
         self.queue_line(chat["id"], line)
         log.info("voice queued")
 
@@ -865,7 +873,14 @@ class Bot:
             log.info("file refused: too_big")
             return
         caption = str(msg.get("caption") or "")
-        body = self._strip_mention(msg, caption, "caption_entities")[0].strip()
+        body, mentioned = self._strip_mention(msg, caption, "caption_entities")
+        body = body.strip()
+        if (
+            self.settings.answer_scope == "all"
+            and not line["private"]
+            and (mentioned or self.to_bot(msg))
+        ):
+            line["words"] = True  # a file that mentions the bot or replies to it gets words
         line["file"] = {"file_id": media["file_id"], "name": name, "mime": mime, "size": size}
         line["content"] = f"{p.name}{self.replied(msg)}: [{label}: {name}] {body}".rstrip()
         line["body"] = body
@@ -903,6 +918,12 @@ class Bot:
         line["content"], line["row"] = content, row
         if body is not None:
             line["body"] = body.strip()
+        if (
+            self.settings.answer_scope == "all"
+            and not line["private"]
+            and not content.startswith(NO_MENTION)
+        ):
+            line["words"] = True  # a mention or a reply to the bot always gets words
         if not self.has_assistant:
             self.post(chat, self.t("no_ai"), thread=line["thread"])
             log.info("text without assistant")
@@ -1584,6 +1605,9 @@ class Bot:
         ]
         covered = [*lines, *handed]
         reply_to = _mid(covered[0]) if len(covered) == 1 else None
+        # with `answer_scope: all` every person's group message gets something to show for it
+        watch = s.answer_scope == "all" and not private
+        self._shown.chat, self._shown.n = chat, 0
         # the assistant's «[[no reply]]»: nothing goes to the chat, and the turn still counts
         raw, silent = assistant.strip_no_reply(reply.text)
         text, acts = gestures.extract(raw, s.photo_hosts, self.t("file_name"))
@@ -1607,7 +1631,12 @@ class Bot:
         others = (
             blocks or settings_blocks or edit_blocks or offered or listed
         )  # each says something
-        self.act(chat, acts, _mid(covered[-1]), bool(text or others), reply_to, state.thread)
+        react = None
+        if watch and not text:  # a reaction alone goes on every message the turn covered
+            react, acts = acts["react"], {**acts, "react": None}
+        shown = self.act(
+            chat, acts, _mid(covered[-1]), bool(text or others), reply_to, state.thread
+        )
         attachments = {a.name: a for a in atts}
         for block in blocks:
             self.apply_block(chat, block, scope, asker, private, attachments, today, state.thread)
@@ -1620,7 +1649,8 @@ class Bot:
             )
         # with `answer_scope: all` a reaction or silence answers too, so an edit of that line
         # is checked against it instead of coming back as a new message
-        stand_in = f"(reaction {acts['react']})" if acts["react"] else "(no reply)"
+        react = react or acts["react"]
+        stand_in = f"(reaction {react})" if react else "(no reply)"
         if text or s.answer_scope == "all":
             self.remember(chat, covered, text or stand_in)
         taken = {x["id"] for x in covered}
@@ -1629,6 +1659,9 @@ class Bot:
             self.kv.set(f"ctx:{chat}", str(max(r["id"] for r in seen)))
         if listed:
             self.offer_reminders(chat, listed, covered, reply_to, scope, state.thread)
+        if watch:  # after everything the answer posts, the reminder offers included
+            shown = shown or self._shown.n > 0
+            self.acknowledge(chat, covered, react, shown, state.thread)
         missed = len(state.pulled) - len(handed)
         if handed or missed:
             log.info("handed over: covered=%d next_turn=%d", len(handed), missed)
@@ -2840,6 +2873,8 @@ class Bot:
                     marked = x["content"].startswith(NO_MENTION)
                     if fresh and (marked or fresh.startswith(NO_MENTION)) and x["content"] != fresh:
                         x = {**x, "content": fresh, "body": body}
+                        if self.settings.answer_scope == "all" and not x.get("private"):
+                            x["words"] = not fresh.startswith(NO_MENTION)
                 out.append(x)
             return out or None
 
@@ -3072,11 +3107,12 @@ class Bot:
         text, so a file or a reaction Telegram refuses never loses the answer. A reaction goes on
         message `to`. When the answer said nothing and none of it reached the chat (no message to
         react to, a refusal, no sticker set), the emoji is said instead, or that it could not be
-        sent, so the chat always hears back."""
+        sent, so the chat always hears back. Whether any of it reached the chat; `texted` (the
+        answer says something of its own) only holds back that fallback."""
         if not any(acts.values()):
-            return
+            return False
         where = {"chat_id": chat, "message_thread_id": self.thread_for(chat, thread)}
-        shown = texted
+        shown = False
         for doc in acts["documents"]:
             try:
                 self.tg.send_file(
@@ -3111,16 +3147,63 @@ class Bot:
                     message_id=to,
                     reaction=[{"type": "emoji", "emoji": acts["react"]}],
                 )
-                return
+                return True
             except TelegramError as e:
                 log.info("reaction failed: %s", safe(e))
-        if not shown:
+        if not shown and not texted:
             note = (
                 {"message_id": reply_to, "allow_sending_without_reply": True} if reply_to else None
             )
             said = acts["react"] or acts["sticker"]
             text = html.escape(said) if said else html.escape(self.t("send_failed"))
-            self.post(chat, text, thread=thread, reply_parameters=note)
+            return self.post(chat, text, thread=thread, reply_parameters=note) is not None
+        return shown
+
+    def acknowledge(
+        self,
+        chat: int,
+        covered: Sequence[Mapping],
+        react: str | None,
+        shown: bool,
+        thread: int | None = None,
+    ) -> None:
+        """`answer_scope: all` in the group: no person's message of the turn is left with
+        nothing to show for it. A reaction-only answer goes on every one of them. An answer that
+        put nothing in the chat (the assistant's «[[no reply]]», an empty answer, a block that
+        changed nothing) marks them read (👀); a mention, a reply to the bot or a voice note gets
+        words instead, never only 👀 (a 👀 only when those words cannot go out). A reaction
+        counts as an answer for a mention too."""
+        lines = [x for x in covered if not x.get("tap") and isinstance(_mid(x), int)]
+        if react:
+            self.mark(chat, [_mid(x) for x in lines], react)
+            return
+        if shown:
+            return
+        asked = [x for x in lines if x.get("words")]
+        if asked:
+            note = {"message_id": _mid(asked[-1]), "allow_sending_without_reply": True}
+            if self.post(chat, self.t("no_answer"), thread=thread, reply_parameters=note) is None:
+                asked = []  # the words did not go out: a 👀 at least
+            log.info("answer: none for a line that asks for words")
+        said = {id(x) for x in asked}
+        self.mark(chat, [_mid(x) for x in lines if id(x) not in said], READ)
+
+    def mark(self, chat: int, mids: Sequence[int], emoji: str) -> None:
+        """Put `emoji` on each message of `mids`. One Telegram refuses (the chat's allowed
+        reactions, a deleted message) gets 👍 once; then the log says so and the rest go on.
+        Never text instead."""
+        for mid in dict.fromkeys(mids):  # an edit of a line in the same turn shares its id
+            for e in dict.fromkeys((emoji, NOTED)):
+                try:
+                    self.tg.call(
+                        "setMessageReaction",
+                        chat_id=chat,
+                        message_id=mid,
+                        reaction=[{"type": "emoji", "emoji": e}],
+                    )
+                    break
+                except TelegramError as err:
+                    log.info("reaction failed: %s", safe(err))
 
     def sticker(self, emoji: str | None) -> str | None:
         """The file_id of the settings' sticker set for `emoji`, read once per set, or None."""
