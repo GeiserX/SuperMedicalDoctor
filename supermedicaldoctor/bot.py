@@ -873,7 +873,14 @@ class Bot:
             log.info("file refused: too_big")
             return
         caption = str(msg.get("caption") or "")
-        body = self._strip_mention(msg, caption, "caption_entities")[0].strip()
+        body, mentioned = self._strip_mention(msg, caption, "caption_entities")
+        body = body.strip()
+        if (
+            self.settings.answer_scope == "all"
+            and not line["private"]
+            and (mentioned or self.to_bot(msg))
+        ):
+            line["words"] = True  # a file that mentions the bot or replies to it gets words
         line["file"] = {"file_id": media["file_id"], "name": name, "mime": mime, "size": size}
         line["content"] = f"{p.name}{self.replied(msg)}: [{label}: {name}] {body}".rstrip()
         line["body"] = body
@@ -3100,11 +3107,12 @@ class Bot:
         text, so a file or a reaction Telegram refuses never loses the answer. A reaction goes on
         message `to`. When the answer said nothing and none of it reached the chat (no message to
         react to, a refusal, no sticker set), the emoji is said instead, or that it could not be
-        sent, so the chat always hears back. Whether any of it reached the chat."""
+        sent, so the chat always hears back. Whether any of it reached the chat; `texted` (the
+        answer says something of its own) only holds back that fallback."""
         if not any(acts.values()):
             return False
         where = {"chat_id": chat, "message_thread_id": self.thread_for(chat, thread)}
-        shown = texted
+        shown = False
         for doc in acts["documents"]:
             try:
                 self.tg.send_file(
@@ -3142,7 +3150,7 @@ class Bot:
                 return True
             except TelegramError as e:
                 log.info("reaction failed: %s", safe(e))
-        if not shown:
+        if not shown and not texted:
             note = (
                 {"message_id": reply_to, "allow_sending_without_reply": True} if reply_to else None
             )
@@ -3163,7 +3171,8 @@ class Bot:
         nothing to show for it. A reaction-only answer goes on every one of them. An answer that
         put nothing in the chat (the assistant's «[[no reply]]», an empty answer, a block that
         changed nothing) marks them read (👀); a mention, a reply to the bot or a voice note gets
-        words instead, never only 👀."""
+        words instead, never only 👀 (a 👀 only when those words cannot go out). A reaction
+        counts as an answer for a mention too."""
         lines = [x for x in covered if not x.get("tap") and isinstance(_mid(x), int)]
         if react:
             self.mark(chat, [_mid(x) for x in lines], react)
@@ -3173,9 +3182,11 @@ class Bot:
         asked = [x for x in lines if x.get("words")]
         if asked:
             note = {"message_id": _mid(asked[-1]), "allow_sending_without_reply": True}
-            self.post(chat, self.t("no_answer"), thread=thread, reply_parameters=note)
+            if self.post(chat, self.t("no_answer"), thread=thread, reply_parameters=note) is None:
+                asked = []  # the words did not go out: a 👀 at least
             log.info("answer: none for a line that asks for words")
-        self.mark(chat, [_mid(x) for x in lines if not x.get("words")], READ)
+        said = {id(x) for x in asked}
+        self.mark(chat, [_mid(x) for x in lines if id(x) not in said], READ)
 
     def mark(self, chat: int, mids: Sequence[int], emoji: str) -> None:
         """Put `emoji` on each message of `mids`. One Telegram refuses (the chat's allowed

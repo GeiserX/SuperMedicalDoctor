@@ -464,3 +464,70 @@ def test_lines_without_a_mention_show_no_typing(make_bot):
     assert bot.tg.of("sendChatAction") == []
     say(bot, "¿qué tomo?", mention=True)
     assert len(bot.tg.of("sendChatAction")) == 1
+
+
+def _photo(caption="", mention=False, reply=False):
+    msg = message(caption, mention=mention, reply=reply)
+    msg["caption"] = msg.pop("text")
+    if "entities" in msg:
+        msg["caption_entities"] = msg.pop("entities")
+    msg["photo"] = [{"file_id": "ph", "file_size": 7, "width": 1000}]
+    return msg
+
+
+def test_a_photo_that_mentions_the_bot_answered_with_nothing_gets_words(make_bot):
+    bot = make_bot(settings=ALL)
+    bot.tg.files["ph"] = b"\xff\xd8 jpeg"
+    plugin(bot).REPLIES[:] = ["[[no reply]]"]
+    bot.handle({"message": _photo("¿qué es esto?", mention=True)})
+    bot.join_idle()
+    assert bot.tg.texts() == [bot.t("no_answer")]
+    assert bot.tg.of("setMessageReaction") == []
+
+
+def test_a_photo_that_replies_to_the_bot_answered_with_nothing_gets_words(make_bot):
+    bot = make_bot(settings=ALL)
+    bot.tg.files["ph"] = b"\xff\xd8 jpeg"
+    plugin(bot).REPLIES[:] = [{"text": "", "kept": True}]
+    bot.handle({"message": _photo("esta", reply=True)})
+    bot.join_idle()
+    assert bot.tg.texts() == [bot.t("no_answer")]
+    assert bot.tg.of("setMessageReaction") == []
+
+
+def test_a_loose_photo_answered_with_nothing_is_marked_read(make_bot):
+    bot = make_bot(settings=ALL)
+    bot.tg.files["ph"] = b"\xff\xd8 jpeg"
+    plugin(bot).REPLIES[:] = ["[[no reply]]"]
+    msg = _photo("la cena")
+    bot.handle({"message": msg})
+    bot.join_idle()
+    assert sent(bot) == []
+    assert _reactions(bot) == [(msg["message_id"], "👀")]
+
+
+def test_a_mention_answered_with_a_reaction_only_gets_that_reaction(make_bot):
+    # a reaction is something to show: the app forces words only when nothing showed
+    bot = make_bot(settings=ALL)
+    plugin(bot).REPLIES[:] = ["```telegram\nreact: 👍\n```"]
+    msg = say(bot, "gracias", mention=True)
+    assert sent(bot) == []
+    assert _reactions(bot) == [(msg["message_id"], "👍")]
+
+
+def test_a_block_that_changes_nothing_with_a_sticker_that_cannot_go_marks_the_line_read(make_bot):
+    # no sticker set: the sticker never reaches the chat, and the block posted nothing either
+    bot = make_bot(settings=ALL)
+    plugin(bot).REPLIES[:] = ['```record\n{"person": "lucia"}\n```\n```telegram\nsticker: 😀\n```']
+    msg = say(bot, "sigo con lo mismo")
+    assert sent(bot) == [] and bot.tg.of("sendSticker") == []
+    assert _reactions(bot) == [(msg["message_id"], "👀")]
+
+
+def test_a_mention_whose_words_cannot_go_is_marked_read(make_bot):
+    bot = make_bot(settings=ALL)
+    bot.tg.fail_next("sendMessage", 400, "Bad Request: message thread not found")
+    bot.tg.fail_next("sendMessage", 400, "Bad Request: message thread not found")
+    plugin(bot).REPLIES[:] = ["[[no reply]]"]
+    msg = say(bot, "¿qué tomo?", mention=True)
+    assert _reactions(bot) == [(msg["message_id"], "👀")]

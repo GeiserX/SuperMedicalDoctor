@@ -39,9 +39,12 @@ never knows which provider answers.
   (`[[no reply]]`, an empty answer, a block that changed nothing, buttons with no text to carry
   them) marks every one of them with 👀, which means "read". When Telegram refuses a reaction (the
   chat's allowed reactions, a deleted message) the app tries 👍 once on that message, then logs it
-  and goes on; it never posts text instead. A mention, a reply to the bot or a voice note never gets
-  only 👀: when the answer put nothing in the chat, the bot says in words that no answer came and asks
-  for the question again, and the turn's other messages get 👀. A failed turn marks nothing (nothing
+  and goes on; it never posts text instead. A mention, a reply to the bot (a photo or file caption
+  included) or a voice note never gets only 👀: when the answer put nothing in the chat, the bot says
+  in words that no answer came and asks for the question again, and the turn's other messages get 👀;
+  if those words cannot go out, the mention gets the 👀 too. A reaction-only answer counts as an
+  answer for a mention as well: the rules ask the assistant for words there, the app does not add
+  any. A failed turn marks nothing (nothing
   was read): its lines stay queued and go with the next turn.
 - In a private chat everything reaches it.
 - The bot must read every group message: make it an administrator of the group, or turn its
