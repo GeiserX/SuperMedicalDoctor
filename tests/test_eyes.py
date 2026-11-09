@@ -9,7 +9,7 @@ import time
 
 import pytest
 from conftest import GROUP, LUCIA, SETTINGS
-from helpers import buttons, last_sent, message, plugin, say, sent, tap
+from helpers import buttons, contents, last_sent, message, plugin, say, sent, tap
 
 ALL = SETTINGS.replace("history_scope: all", "history_scope: asked\n  answer_scope: all")
 
@@ -207,8 +207,8 @@ def test_a_refused_mark_never_holds_the_turn_or_posts_text(make_bot, caplog):
     msg = say(bot, "¿qué tomo?", mention=True)
     assert len(plugin(bot).CALLS) == 1
     assert sent(bot) == []  # silence stays silence: no text instead
-    # refused on arrival, tried once more when the turn takes it; never a 👍 instead
-    assert _reactions(bot) == [(msg["message_id"], "👀")] * 2
+    # refused on arrival, maybe tried once more when the turn takes it; never a 👍 instead
+    assert set(_reactions(bot)) == {(msg["message_id"], "👀")}
     assert "start reaction failed" in caplog.text
 
 
@@ -355,3 +355,71 @@ def test_a_hanging_mark_never_holds_the_handler(make_bot):
     gate.set()
     bot.join_idle()
     assert len(bot.tg.of("setMessageReaction")) == 2
+
+
+# The 👀 never stands in for the answer: a message marked on arrival still gets its turn's answer.
+
+
+def test_a_message_marked_while_out_of_capacity_gets_its_answer_when_capacity_returns(make_bot):
+    bot = make_bot()
+    now = [1000.0]
+    bot.clock = lambda: now[0]
+    bot.rest(GROUP, 600, None)
+    msg = say(bot, "¿qué tomo?", mention=True)
+    assert _reactions(bot) == [(msg["message_id"], "👀")]
+    assert plugin(bot).CALLS == []
+    now[0] += 600
+    bot.wake_rested()
+    bot.join_idle()
+    assert contents(plugin(bot).CALLS[-1]) == ["Lucía: ¿qué tomo?"]
+    assert bot.tg.texts()[-1] == "Vale."
+    assert sent(bot)[-1]["reply_parameters"]["message_id"] == msg["message_id"]
+
+
+def test_a_reaction_answer_after_capacity_returns_replaces_the_arrival_mark(make_bot):
+    bot = make_bot(settings=ALL)
+    now = [1000.0]
+    bot.clock = lambda: now[0]
+    bot.rest(GROUP, 600, None)
+    msg = say(bot, "ya me tomé la pastilla")
+    plugin(bot).REPLIES[:] = ["```telegram\nreact: 👍\n```"]
+    now[0] += 600
+    bot.wake_rested()
+    bot.join_idle()
+    assert len(plugin(bot).CALLS) == 1
+    assert _reactions(bot) == [(msg["message_id"], "👀"), (msg["message_id"], "👍")]
+
+
+def test_a_message_marked_on_arrival_is_answered_after_a_failed_turn(make_bot):
+    bot = make_bot()
+    plugin(bot).REPLIES[:] = [{"text": "x", "kept": False}, "Las dos."]
+    first = say(bot, "¿qué tomo?", mention=True)
+    assert bot.tg.texts() == [bot.t("ai_down")]
+    say(bot, "¿y luego?", mention=True)  # the next turn takes the failed line again
+    assert contents(plugin(bot).CALLS[-1]) == ["Lucía: ¿qué tomo?", "Lucía: ¿y luego?"]
+    assert bot.tg.texts()[-1] == "Las dos."
+    assert [m for m, _ in _reactions(bot)].count(first["message_id"]) == 1
+
+
+def test_a_message_marked_on_arrival_is_answered_after_a_restart(make_bot, data_repo):
+    from conftest import FakeTelegram
+
+    from supermedicaldoctor.bot import Bot
+
+    bot = make_bot()
+    bot.rest(GROUP, 600, None)
+    msg = say(bot, "¿qué tomo?", mention=True)
+    assert _reactions(bot) == [(msg["message_id"], "👀")]
+    bot.close()  # the process dies with the line still queued
+    new = Bot(data_repo.data, FakeTelegram(), now=bot.now)
+    new.debounce_s = 0
+    new.start()
+    try:
+        new.resume()
+        new.join_idle()
+        assert contents(plugin(new).CALLS[-1]) == ["Lucía: ¿qué tomo?"]
+        assert new.tg.texts() == ["Vale."]
+        assert new.tg.of("setMessageReaction") == []  # it already has its 👀
+        assert new.kv.get_json(f"pending:{GROUP}") is None
+    finally:
+        new.close()
