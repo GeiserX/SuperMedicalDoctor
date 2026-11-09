@@ -33,25 +33,27 @@ never knows which provider answers.
   reaction or with nothing is still remembered as answered, so an edit of it asks the assistant to
   check that answer instead of arriving as a new message.
 - In every chat (private, the group in either `answer_scope`) the bot puts 👀 on each person's
-  message the moment a turn takes it, so people see it is being worked on while the assistant
-  thinks, however long that takes: the burst a turn starts with, and each message that arrives
-  while a turn runs, at once, whether that turn takes it or the next one does. That covers
-  mentions, replies, plain lines, photos and files, voice notes (on the person's note, never on
-  the bot's «🎤» echo) and an edit that starts a turn. A tap on a button, a bot's or a stranger's
+  message a turn will answer the moment it arrives, before it waits for anything: the short pause
+  that gathers a burst, a turn already running, a voice note being heard, or the assistant out of
+  capacity. People see it was read however long the answer takes. That covers private messages,
+  mentions, replies, plain lines with `answer_scope: all`, photos and files, voice notes (on the
+  person's note, never on the bot's «🎤» echo) and an edit that starts a turn. A group line that
+  only goes to the assistant as context (`[not to you]`) gets none. When a turn takes a line that
+  has no 👀 yet (one queued before a restart, or one Telegram refused on arrival), it puts it then. A tap on a button, a bot's or a stranger's
   message and a turn with no person's message get none, and a message that already carries the
   bot's 👀 never gets it twice. The 👀 goes out on its own thread: the turn never waits for it, and
   when Telegram refuses it the app logs it and goes on, with no 👍 and no text instead (👍 means
   "noted"). At the end of the turn a text answer leaves the 👀 where it is; a reaction-only answer
   replaces it with its emoji (Telegram keeps one reaction per bot), and a later turn that takes
   that message again puts the 👀 back. A failed turn, or one waiting for capacity, leaves the 👀:
-  its lines go with the next turn.
+  its lines go with the next turn, and a line that arrives during that wait gets its 👀 at once.
 - With `answer_scope: all` no person's group message is left with nothing to show for it. After a
   turn the app looks at every person's message it covered, the burst and the lines that joined it
   while it ran. An answer with text goes out as it always did. A reaction-only answer puts that
   emoji on every one of those messages, not only the last. An answer that put nothing in the chat
   (`[[no reply]]`, an empty answer, a block that changed nothing, buttons with no text to carry
-  them) keeps the 👀 of the start on every one of them, which then means "read". A message whose
-  start 👀 Telegram refused gets it tried again then, and when Telegram refuses that too (the
+  them) keeps their 👀 on every one of them, which then means "read". A message whose
+  👀 Telegram refused gets it tried again then, and when Telegram refuses that too (the
   chat's allowed reactions, a deleted message) the app tries 👍 once on that message, then logs it
   and goes on; it never posts text instead. A mention, a reply to the bot (a photo or file caption
   included) or a voice note never gets only 👀: when the answer put nothing in the chat, the bot says
@@ -112,7 +114,7 @@ The return value is a string or `{"text", "conversation", "kept", "covers", "opt
 "reminders", "later"}`. `kept: false` (or an exception, or the timeout) is a failed turn: nothing is
 applied and the lines go with the next one. An answer that is only `[[no reply]]` is the assistant
 choosing to say nothing: no text goes to the chat, no error is posted, the turn counts as answered
-and its lines are not sent again (they keep the 👀 the turn started with, above). The app takes `[[no reply]]` out of any answer before it is sent,
+and its lines are not sent again (they keep the 👀 they got on arrival, above). The app takes `[[no reply]]` out of any answer before it is sent,
 so the marker never reaches the chat; it exists because a provider may treat an empty answer as a
 failure. An exception with a numeric `retry_after`
 (seconds) means the provider is out of capacity: the chat hears the wait once, and the lines, with

@@ -15,8 +15,8 @@ the next turn. An edited message is handled by where it is: still queued, its ne
 the running turn, a correction joins it; already answered, a new turn checks that answer; an edit
 that now addresses the bot is a new message. With `answer_scope: all` a person's group text
 addresses the bot even without a mention; it goes in marked «[no mention]». In every chat a
-person's message gets 👀 the moment a turn takes it, on a thread of its own the turn never waits
-for.
+person's message a turn will answer gets 👀 the moment it arrives, before it waits for anything,
+on a thread of its own the turn never waits for.
 
 Scope is structural: a private chat's turn carries only that person's data, a group turn
 everyone's. Before every turn the data repository is pulled and the listed files of other
@@ -133,12 +133,12 @@ NOT_TO_YOU = "[not to you] "  # the mark of a group line that did not call the b
 # With `answer_scope: all` a group line without a mention or a reply starts a turn too, marked so
 # the assistant knows nobody asked it anything directly
 NO_MENTION = "[no mention] "
-# Every chat: a person's message gets 👀 the moment a turn takes it, so people see it is being
-# worked on. In an `answer_scope: all` group a message is never left with nothing to show for it:
+# Every chat: a person's message a turn will answer gets 👀 the moment it arrives, so people see it
+# is being worked on. In an `answer_scope: all` group a message is never left with nothing to show for it:
 # an answer that posts nothing keeps the 👀, and a reaction Telegram refuses falls back to 👍
 READ, NOTED = "👀", "👍"
 EYES_KEEP = 200  # ids of the messages that carry the bot's 👀, remembered per chat
-EYES_WAIT_S = 20.0  # the end of a turn waits this long for its start 👀 before it reacts
+EYES_WAIT_S = 20.0  # the end of a turn waits this long for the queued 👀 before it reacts
 OFFER_GONE = "remind_timeout"  # the label an offer's buttons give way to when nobody answered
 REMIND_TTL_S = 1800  # an offered reminder can be tapped this long; then nothing is done
 REMIND_DAYS = 60  # the furthest ahead a reminder may be
@@ -958,13 +958,13 @@ class Bot:
             log.info("pending capped dropped=%d", dropped[0])
         if not run:
             return
+        # a line a turn will answer has its 👀 now, before it waits for anything (the debounce, a
+        # running turn, a voice note being heard, the assistant out of capacity)
+        self.eye(chat, [line])
         with self._q:
             self._newest[chat] = self.clock()
             if "voice" in line:
                 self._voicing.setdefault(chat, {})[line["id"]] = self.clock()
-            running = chat in self._running
-        if running:  # it joins the running turn, or goes with the next one: either way, taken
-            self.eye(chat, [line])
         if "voice" in line:
             self.hearer.submit(chat)
         else:
@@ -1439,7 +1439,7 @@ class Bot:
             )
             state.grants = [_grant(x["grant"]) for x in lines if isinstance(x.get("grant"), dict)]
             self._running[chat] = state
-        self.eye(chat, lines)  # before anything else the turn does, and never waited on
+        self.eye(chat, lines)  # lines marked on arrival are skipped; never waited on
         try:
             self._converse(chat, key, lines, state)
         finally:
@@ -1646,7 +1646,7 @@ class Bot:
         if watch and not text:  # a reaction alone goes on every message the turn covered
             react, acts = acts["react"], {**acts, "react": None}
         if react or acts["react"]:
-            self.settle_eyes()  # the start 👀 lands first, so the answer's reaction replaces it
+            self.settle_eyes()  # the 👀 lands first, so the answer's reaction replaces it
         shown = self.act(
             chat, acts, _mid(covered[-1]), bool(text or others), reply_to, state.thread
         )
@@ -3184,7 +3184,7 @@ class Bot:
         """`answer_scope: all` in the group: no person's message of the turn is left with
         nothing to show for it. A reaction-only answer goes on every one of them. An answer that
         put nothing in the chat (the assistant's «[[no reply]]», an empty answer, a block that
-        changed nothing) leaves them read (👀, put when the turn started, tried again where it
+        changed nothing) leaves them read (👀, put when they arrived, tried again where it
         was refused); a mention, a reply to the bot or a voice note gets words on top, never only
         👀. A reaction counts as an answer for a mention too."""
         lines = [x for x in covered if not x.get("tap") and isinstance(_mid(x), int)]
@@ -3225,8 +3225,9 @@ class Bot:
                     log.info("reaction failed: %s", safe(err))
 
     def eye(self, chat: int, lines: Sequence[Mapping]) -> None:
-        """Put 👀 on each person's message of `lines` the moment a turn takes it, in every chat,
-        so people see it is being worked on. A tap, a line without a message of its own and a
+        """Put 👀 on each person's message of `lines` the moment it is queued for a turn, and
+        again when a turn takes it (a no-op for one already marked), in every chat, so people see
+        it is being worked on. A tap, a line without a message of its own and a
         message that already carries the bot's 👀 get none. It runs on its own thread: the turn
         never waits for it, a failure is only logged, and nothing falls back to 👍 (which means
         noted) or to text."""
@@ -3253,7 +3254,7 @@ class Bot:
                 self._eyes(chat, drop={mid})  # the end of the turn may try again, with its 👍
 
     def settle_eyes(self) -> None:
-        """Wait (a little) for the 👀 queued at the start, so a reaction meant to replace it is
+        """Wait (a little) for the queued 👀, so a reaction meant to replace it is
         not overwritten by it, and a refused one is known before the end of the turn marks."""
         try:
             self.eyes.join_idle(EYES_WAIT_S)
