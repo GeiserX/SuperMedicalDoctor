@@ -32,6 +32,7 @@ def _burst(bot, first, second):
         if now[0] >= 1.0 and not fired:
             fired.append(1)
             bot.handle({"message": second})
+            bot.eyes.join_idle()  # both arrival 👀 are done before the turn takes the lines
         now[0] += seconds
 
     bot.sleep = sleep
@@ -219,20 +220,23 @@ def test_a_refused_read_mark_falls_back_to_a_thumb_once_and_never_to_text(make_b
     bot = make_bot(settings=ALL)
     caplog.set_level("INFO")
     first, second = message("uno"), message("dos")
-    bot.tg.fail_next("setMessageReaction", 400, "Bad Request: REACTION_INVALID")  # a's start 👀
-
-    def silent(turn):
-        bot.eyes.join_idle()
-        bot.tg.fail_next("setMessageReaction", 400, "Bad Request: REACTION_INVALID")
-        return "[[no reply]]"
-
-    plugin(bot).REPLIES[:] = [silent]
-    _burst(bot, first, second)
     a, b = first["message_id"], second["message_id"]
-    # b keeps its start 👀; a, refused at the start, is tried again at the end, then 👍 once
-    assert _reactions(bot) == [(a, "👀"), (b, "👀"), (a, "👀"), (a, "👍")]
+    real = bot.tg.call
+
+    def call(method, **params):  # this chat refuses 👀 on a, every time
+        refused = method == "setMessageReaction" and params["message_id"] == a
+        if refused and params["reaction"][0]["emoji"] == "👀":
+            bot.tg.fail_next(method, 400, "Bad Request: REACTION_INVALID")
+        return real(method, **params)
+
+    bot.tg.call = call
+    plugin(bot).REPLIES[:] = ["[[no reply]]"]
+    _burst(bot, first, second)
+    # b keeps its 👀; a, refused on arrival, is tried again when the turn takes it and at the
+    # end, then gets 👍 once
+    assert _reactions(bot) == [(a, "👀"), (b, "👀"), (a, "👀"), (a, "👀"), (a, "👍")]
     assert sent(bot) == []
-    assert caplog.text.count("reaction failed") == 2
+    assert caplog.text.count("reaction failed") == 3
 
 
 def test_a_refused_reaction_falls_back_to_a_thumb_and_never_to_text(make_bot):

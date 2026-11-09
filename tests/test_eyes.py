@@ -1,10 +1,13 @@
-"""👀 when a turn starts: in every chat, the bot puts 👀 on each person's message the moment a turn
-takes it, and on a message that joins a running turn the moment it arrives, so people see it is
-being worked on. Never on a bot's message, a tap or a turn with no person's message, never twice,
-and never in the way of the turn."""
+"""👀 on arrival: in every chat, the bot puts 👀 on each person's message a turn will answer the
+moment it arrives, before it waits for anything (the debounce, a running turn, the assistant out of
+capacity), so people see it is being worked on. A turn that takes a line not marked yet (one queued
+before a restart) marks it then. Never on a bot's message, a tap or a turn with no person's
+message, never twice, and never in the way of the handler or the turn."""
 
 import threading
+import time
 
+import pytest
 from conftest import GROUP, LUCIA, SETTINGS
 from helpers import buttons, last_sent, message, plugin, say, sent, tap
 
@@ -204,7 +207,8 @@ def test_a_refused_mark_never_holds_the_turn_or_posts_text(make_bot, caplog):
     msg = say(bot, "¿qué tomo?", mention=True)
     assert len(plugin(bot).CALLS) == 1
     assert sent(bot) == []  # silence stays silence: no text instead
-    assert _reactions(bot) == [(msg["message_id"], "👀")]  # no 👍 at the start
+    # refused on arrival, tried once more when the turn takes it; never a 👍 instead
+    assert _reactions(bot) == [(msg["message_id"], "👀")] * 2
     assert "start reaction failed" in caplog.text
 
 
@@ -256,3 +260,98 @@ def test_a_failed_turn_leaves_the_mark(make_bot):
     msg = say(bot, "¿qué tomo?", mention=True)
     assert bot.tg.texts() == [bot.t("ai_down")]
     assert _reactions(bot) == [(msg["message_id"], "👀")]
+
+
+class NoCapacity(RuntimeError):
+    def __init__(self, seconds):
+        super().__init__("no capacity")
+        self.retry_after = seconds
+
+
+def test_a_message_that_arrives_while_out_of_capacity_is_marked_at_once(make_bot):
+    bot = make_bot()
+    now = [1000.0]
+    bot.clock = lambda: now[0]
+    plugin(bot).REPLIES[:] = [NoCapacity(600)]
+    first = say(bot, "uno", mention=True)
+    calls = len(plugin(bot).CALLS)
+    second = say(bot, "dos", mention=True)
+    assert len(plugin(bot).CALLS) == calls  # no turn while there is no capacity
+    marks = [(first["message_id"], "👀"), (second["message_id"], "👀")]
+    assert _reactions(bot) == marks  # yet it shows it was read
+    now[0] += 600
+    bot.wake_rested()
+    bot.join_idle()
+    assert bot.tg.texts()[-1] == "Vale."
+    assert _reactions(bot) == marks  # the turn that answers them adds none
+
+
+@pytest.mark.parametrize(
+    "settings, kw, marked",
+    [
+        (None, {"private": True}, True),
+        (None, {"mention": True}, True),
+        (None, {"reply": True}, True),
+        (None, {}, False),  # asked mode: plain talk is context, never answered
+        (ALL, {}, True),  # answer_scope all: every person's line
+    ],
+)
+def test_who_is_marked_on_arrival_before_any_turn(make_bot, settings, kw, marked):
+    bot = make_bot(settings=settings)
+    msg = message("¿qué tomo?", **kw)
+    bot.rest(msg["chat"]["id"], 600, None)  # out of capacity: no turn starts
+    bot.handle({"message": msg})
+    bot.join_idle()
+    assert plugin(bot).CALLS == []
+    assert _reactions(bot) == ([(msg["message_id"], "👀")] if marked else [])
+
+
+def test_a_message_waiting_for_its_turn_has_the_mark_before_the_turn(make_bot):
+    bot = make_bot()
+    bot.debounce_s = 2.5
+    now = [0.0]
+    bot.clock = lambda: now[0]
+    seen = []
+
+    def sleep(seconds):  # the worker waits for the burst to end
+        if not seen:
+            bot.eyes.join_idle()
+            seen.append((_reactions(bot), len(plugin(bot).CALLS)))
+        now[0] += seconds
+
+    bot.sleep = sleep
+    msg = say(bot, "¿qué tomo?", mention=True)
+    assert seen == [([(msg["message_id"], "👀")], 0)]
+    assert _reactions(bot) == [(msg["message_id"], "👀")]
+
+
+def test_an_edit_that_starts_a_turn_is_marked_on_arrival(make_bot):
+    bot = make_bot()
+    msg = say(bot, "hola a todos")
+    bot.rest(GROUP, 600, None)
+    bot.handle({"edited_message": message("¿qué tomo?", mention=True, mid=msg["message_id"])})
+    bot.join_idle()
+    assert plugin(bot).CALLS == []
+    assert _reactions(bot) == [(msg["message_id"], "👀")]
+
+
+def test_a_hanging_mark_never_holds_the_handler(make_bot):
+    bot = make_bot()
+    gate = threading.Event()
+    real = bot.tg.call
+
+    def call(method, **params):
+        if method == "setMessageReaction":
+            gate.wait(10)
+        return real(method, **params)
+
+    bot.tg.call = call
+    bot.rest(GROUP, 600, None)
+    t0 = time.monotonic()
+    for text in ("uno", "dos"):
+        bot.handle({"message": message(text, mention=True)})
+    assert time.monotonic() - t0 < 2  # the handler returned while the 👀 hung
+    assert bot.tg.of("setMessageReaction") == []
+    gate.set()
+    bot.join_idle()
+    assert len(bot.tg.of("setMessageReaction")) == 2
